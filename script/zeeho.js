@@ -64,7 +64,7 @@ async function main() {
         // 查看签到记录
         const {count, prize} = await user.getSignRecord()
         await $.wait(user.getRandomTime());
-        if(prize == 3) {
+        if(prize == 30) {
           // 盲盒抽奖
           integralScore = await user.lottery()
           await $.wait(user.getRandomTime());
