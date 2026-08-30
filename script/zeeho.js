@@ -228,7 +228,7 @@ class UserInfo {
   async createArticle() {
     try {
       const opts = {
-        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle`,
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/mineArticleInfo`,
         type: "post",
         dataType: "json",
         headers: Object.assign(this.headers, getSign('app')),
