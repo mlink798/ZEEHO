@@ -6,7 +6,6 @@
 @version 2026-08-31
 @minVersion 3.4.0(962)
 @tag 极核 签到 积分
-*/
 
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
