@@ -212,28 +212,23 @@ class UserInfo {
 
       const list = res?.data?.nowSignDetailVos || [];
 
-      // 今日日期
-      const today = new Date().toISOString().slice(0, 10);
+      // 归一化签到日期集合：兼容 "2026-09-01" / "2026-09-01 10:00:00" / "2026-09-01T10:00:00" 等格式
+      const signedSet = new Set();
+      for (const item of list) {
+        const dateStr = String(item?.createDate ?? '').trim().slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) signedSet.add(dateStr);
+      }
 
-      // 找到今天索引
-      const todayIndex = list.findIndex(
-        item => item.createDate === today
-      );
+      // 用本地日期（避免 toISOString 的 UTC 偏移导致差一天）
+      const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-      // 连续签到天数
+      // 连续签到天数：从今天（若今天未同步则从昨天）开始向前回推
+      const cursor = new Date();
+      if (!signedSet.has(fmt(cursor))) cursor.setDate(cursor.getDate() - 1);
       let count = 0;
-
-      // 从今天开始往前统计
-      for (let i = todayIndex; i >= 0; i--) {
-
-        const status = list[i]?.signStatue;
-
-        // 3=已签到 5=补签
-        if (status == 3 || status == 5) {
-          count++;
-        } else {
-          break;
-        }
+      while (signedSet.has(fmt(cursor))) {
+        count++;
+        cursor.setDate(cursor.getDate() - 1);
       }
 
       // 今日积分
