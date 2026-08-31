@@ -1,7 +1,12 @@
 /*
-极核 每日签到、积分任务
-
-获取 Cookie 方式：zeeho app - 我的
+@name 极核签到
+@description 极核ZEEHO每日自动签到、社区互动、满30天盲盒抽奖，支持自动抓Token、多账号。
+@author lucky
+@homepage https://github.com/mlink798
+@version 2026-08-31
+@minVersion 3.4.0(962)
+@tag 极核 签到 积分
+*/
 
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
