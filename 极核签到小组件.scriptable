@@ -1,0 +1,2190 @@
+// ============= 配置与常量 =========
+const BASE = "https://tapi.zeehoev.com";
+const H5_BASE = "https://h5.zeehoev.com";
+
+// ========== 🔑 在此处粘贴您的 Token ==========
+// 💡 首次运行时会弹窗让你输入，会自动填入这里
+// 💡 Token过期时也会弹窗让你更新
+const HARDCODED_TOKEN = "";
+
+// ========== 🔄 强制重置（调试用） ==========
+const FORCE_RESET = false;
+
+// ========== 🐛 调试模式 ==========
+// 开启后忽略"今天已发布"的限制，强制重新发布、点赞、分享、删除
+const DEBUG_MODE = false; // true=开启调试模式，false=关闭
+
+// ========== 📝 发布动态配置 ==========
+const POST_CONTENT = "开心的一天"; // 每天发布的动态内容
+const ENABLE_AUTO_POST = true; // 是否启用自动发布动态
+
+// =============================================
+
+// ========== 🎨 UI 配置（可调整） ==========
+const UI_CONFIG = {
+  verticalSpacing: 1,  // 垂直间距调整为1
+  horizontalSpacing: 3,
+  padding: 8,
+};
+
+// API 路径
+const API = {
+  homeRideInfo: "/v1.0/app/cfmotoserverapp/homeRideInfo",
+  myRideInfo: "/v1.0/app/cfmotoserverapp/myRideInfo",
+  vehicleWidgets: (vinNo) =>
+    `/v1.0/app/cfmotoserverapp/vehicle/widgets/${encodeURIComponent(vinNo)}`,
+  tirePressure: "/v1.0/app/cfmotoserverapp/app/vehicle/tire/monitoring",
+  vehicleList: "/v1.0/app/cfmotoserverapp/vehicle/list",
+  vehicleHomePage: (vehicleId) =>
+    `/v1.0/app/cfmotoserverapp/vehicleHomePage/${encodeURIComponent(vehicleId)}`,
+  signinLottery: "/cfmotoservermine/signin/lottery",
+  totalIntegral: "/v1.0/mine/cfmotoservermine/integral/totalIntegral",
+  commonArticle: "/v1.0/social/cfmotoserversocial/commonArticle",
+  mineArticleInfo: "/v1.0/social/cfmotoserversocial/community/mineArticleInfo",
+  likeFavorite: "/v1.0/social/cfmotoserversocial/socialCommu/likeFavoriteInfo",
+  shareArticle: (articleId) => `/v1.0/social/cfmotoserversocial/article/share/${articleId}`,
+  deleteArticle: "/v1.0/social/cfmotoserversocial/commonArticle/deleteArticle",
+  // 🆕 电池信息接口
+  batteryInfo: (vinNo) => `/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`,
+  // 🆕 领取分享积分接口
+  adjustByShare: "/v1.0/mine/cfmotoservermine/integral/adjustByShare",
+};
+const API_SIGNIN_V1 = "/cfmotoservermine/signin";
+const API_SIGNIN_INFO = "/cfmotoservermine/signin/info";
+
+// 🚗 车辆图片 - 设置为空字符串，默认不显示图片
+const IMAGE_URL = "";
+
+// 调试与通知
+const DEBUG_LOG = true;
+
+// ============= 本地签名 =============
+const APP_CONFIG = {
+  h5: {
+    appId: "S7qPWPU1",
+    appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
+  },
+  app: {
+    appId: "S7qPWPU1",
+    appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
+  }
+};
+
+function getUuid() {
+  const pattern = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+  let result = "";
+  const chars = "abcdef0123456789";
+  for (let char of pattern) {
+    if (char === "x" || char === "y") {
+      const random = Math.floor(Math.random() * 16);
+      const value = char === "y" ? (random & 0x3) | 0x8 : random;
+      result += value.toString(16);
+    } else {
+      result += char;
+    }
+  }
+  return result;
+}
+
+function getRandomChars(n = 16) {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  let result = '';
+  for (let i = 0; i < n; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function md5(t, e) {
+  function n(t, e) { return t << e | t >>> 32 - e }
+
+  function r(t, e) {
+    var n, r, o, i, a;
+    return o = 2147483648 & t, i = 2147483648 & e, a = (1073741823 & t) + (1073741823 & e),
+      (n = 1073741824 & t) & (r = 1073741824 & e) ? 2147483648 ^ a ^ o ^ i : n | r ? 1073741824 & a ? 3221225472 ^ a ^ o ^ i : 1073741824 ^ a ^ o ^ i : a ^ o ^ i
+  }
+
+  function o(t, e, o, i, a, u, c) {
+    return t = r(t, r(r(function(t, e, n) { return t & e | ~t & n }(e, o, i), a), c)), r(n(t, u), e)
+  }
+
+  function i(t, e, o, i, a, u, c) {
+    return t = r(t, r(r(function(t, e, n) { return t & n | e & ~n }(e, o, i), a), c)), r(n(t, u), e)
+  }
+
+  function a(t, e, o, i, a, u, c) {
+    return t = r(t, r(r(function(t, e, n) { return t ^ e ^ n }(e, o, i), a), c)), r(n(t, u), e)
+  }
+
+  function u(t, e, o, i, a, u, c) {
+    return t = r(t, r(r(function(t, e, n) { return e ^ (t | ~n) }(e, o, i), a), c)), r(n(t, u), e)
+  }
+
+  function c(t) {
+    var e, n = "",
+      r = "";
+    for (e = 0; e <= 3; e++) n += (r = "0" + (t >>> 8 * e & 255).toString(16)).substr(r.length - 2, 2);
+    return n
+  }
+  var s, l, f, p, d, h, v, y, g, m = Array();
+  for (m = function(t) {
+      for (var e, n = t.length, r = n + 8, o = 16 * ((r - r % 64) / 64 + 1), i = Array(o - 1), a = 0, u = 0; u < n;)
+        a = u % 4 * 8, i[e = (u - u % 4) / 4] = i[e] | t.charCodeAt(u) << a, u++;
+      return a = u % 4 * 8, i[e = (u - u % 4) / 4] = i[e] | 128 << a, i[o - 2] = n << 3, i[o - 1] = n >>> 29, i
+    }(t = function(t) {
+      t = t.replace(/\r\n/g, "\n");
+      for (var e = "", n = 0; n < t.length; n++) {
+        var r = t.charCodeAt(n);
+        r < 128 ? e += String.fromCharCode(r) : r > 127 && r < 2048 ? (e += String.fromCharCode(r >> 6 | 192), e += String.fromCharCode(63 & r | 128)) : (e += String.fromCharCode(r >> 12 | 224), e += String.fromCharCode(r >> 6 & 63 | 128), e += String.fromCharCode(63 & r | 128))
+      }
+      return e
+    }(t)), h = 1732584193, v = 4023233417, y = 2562383102, g = 271733878, s = 0; s < m.length; s += 16)
+    l = h, f = v, p = y, d = g, h = o(h, v, y, g, m[s + 0], 7, 3614090360), g = o(g, h, v, y, m[s + 1], 12, 3905402710),
+    y = o(y, g, h, v, m[s + 2], 17, 606105819), v = o(v, y, g, h, m[s + 3], 22, 3250441966),
+    h = o(h, v, y, g, m[s + 4], 7, 4118548399), g = o(g, h, v, y, m[s + 5], 12, 1200080426),
+    y = o(y, g, h, v, m[s + 6], 17, 2821735955), v = o(v, y, g, h, m[s + 7], 22, 4249261313),
+    h = o(h, v, y, g, m[s + 8], 7, 1770035416), g = o(g, h, v, y, m[s + 9], 12, 2336552879),
+    y = o(y, g, h, v, m[s + 10], 17, 4294925233), v = o(v, y, g, h, m[s + 11], 22, 2304563134),
+    h = o(h, v, y, g, m[s + 12], 7, 1804603682), g = o(g, h, v, y, m[s + 13], 12, 4254626195),
+    y = o(y, g, h, v, m[s + 14], 17, 2792965006), h = i(h, v = o(v, y, g, h, m[s + 15], 22, 1236535329), y, g, m[s + 1], 5, 4129170786),
+    g = i(g, h, v, y, m[s + 6], 9, 3225465664), y = i(y, g, h, v, m[s + 11], 14, 643717713),
+    v = i(v, y, g, h, m[s + 0], 20, 3921069994), h = i(h, v, y, g, m[s + 5], 5, 3593408605),
+    g = i(g, h, v, y, m[s + 10], 9, 38016083), y = i(y, g, h, v, m[s + 15], 14, 3634488961),
+    v = i(v, y, g, h, m[s + 4], 20, 3889429448), h = i(h, v, y, g, m[s + 9], 5, 568446438),
+    g = i(g, h, v, y, m[s + 14], 9, 3275163606), y = i(y, g, h, v, m[s + 3], 14, 4107603335),
+    v = i(v, y, g, h, m[s + 8], 20, 1163531501), h = i(h, v, y, g, m[s + 13], 5, 2850285829),
+    g = i(g, h, v, y, m[s + 2], 9, 4243563512), y = i(y, g, h, v, m[s + 7], 14, 1735328473),
+    h = a(h, v = i(v, y, g, h, m[s + 12], 20, 2368359562), y, g, m[s + 5], 4, 4294588738),
+    g = a(g, h, v, y, m[s + 8], 11, 2272392833), y = a(y, g, h, v, m[s + 11], 16, 1839030562),
+    v = a(v, y, g, h, m[s + 14], 23, 4259657740), h = a(h, v, y, g, m[s + 1], 4, 2763975236),
+    g = a(g, h, v, y, m[s + 4], 11, 1272893353), y = a(y, g, h, v, m[s + 7], 16, 4139469664),
+    v = a(v, y, g, h, m[s + 10], 23, 3200236656), h = a(h, v, y, g, m[s + 13], 4, 681279174),
+    g = a(g, h, v, y, m[s + 0], 11, 3936430074), y = a(y, g, h, v, m[s + 3], 16, 3572445317),
+    v = a(v, y, g, h, m[s + 6], 23, 76029189), h = a(h, v, y, g, m[s + 9], 4, 3654602809),
+    g = a(g, h, v, y, m[s + 12], 11, 3873151461), y = a(y, g, h, v, m[s + 15], 16, 530742520),
+    h = u(h, v = a(v, y, g, h, m[s + 2], 23, 3299628645), y, g, m[s + 0], 6, 4096336452),
+    g = u(g, h, v, y, m[s + 7], 10, 1126891415), y = u(y, g, h, v, m[s + 14], 15, 2878612391),
+    v = u(v, y, g, h, m[s + 5], 21, 4237533241), h = u(h, v, y, g, m[s + 12], 6, 1700485571),
+    g = u(g, h, v, y, m[s + 3], 10, 2399980690), y = u(y, g, h, v, m[s + 10], 15, 4293915773),
+    v = u(v, y, g, h, m[s + 1], 21, 2240044497), h = u(h, v, y, g, m[s + 8], 6, 1873313359),
+    g = u(g, h, v, y, m[s + 15], 10, 4264355552), y = u(y, g, h, v, m[s + 6], 15, 2734768916),
+    v = u(v, y, g, h, m[s + 13], 21, 1309151649), h = u(h, v, y, g, m[s + 4], 6, 4149444226),
+    g = u(g, h, v, y, m[s + 11], 10, 3174756917), y = u(y, g, h, v, m[s + 2], 15, 718787259),
+    v = u(v, y, g, h, m[s + 9], 21, 3951481745), h = r(h, l), v = r(v, f), y = r(y, p), g = r(g, d);
+  return 32 == e ? (c(h) + c(v) + c(y) + c(g)).toLowerCase() : (c(v) + c(y)).toLowerCase()
+}
+
+function sha1(msg) {
+  function rotate_left(n, s) { var t4 = (n << s) | (n >>> (32 - s)); return t4 };
+
+  function cvt_hex(val) { var str = ''; var i; var v; for (i = 7; i >= 0; i--) { v = (val >>> (i * 4)) & 0x0f; str += v.toString(16) } return str };
+
+  function Utf8Encode(string) { string = string.replace(/\r\n/g, '\n'); var utftext = ''; for (var n = 0; n < string.length; n++) { var c = string.charCodeAt(n); if (c < 128) { utftext += String.fromCharCode(c) } else if ((c > 127) && (c < 2048)) { utftext += String.fromCharCode((c >> 6) | 192); utftext += String.fromCharCode((c & 63) | 128) } else { utftext += String.fromCharCode((c >> 12) | 224); utftext += String.fromCharCode(((c >> 6) & 63) | 128); utftext += String.fromCharCode((c & 63) | 128) } } return utftext };
+  var blockstart;
+  var i, j;
+  var W = new Array(80);
+  var H0 = 0x67452301;
+  var H1 = 0xEFCDAB89;
+  var H2 = 0x98BADCFE;
+  var H3 = 0x10325476;
+  var H4 = 0xC3D2E1F0;
+  var A, B, C, D, E;
+  var temp;
+  msg = Utf8Encode(msg);
+  var msg_len = msg.length;
+  var word_array = new Array();
+  for (i = 0; i < msg_len - 3; i += 4) {
+    j = msg.charCodeAt(i) << 24 | msg.charCodeAt(i + 1) << 16 | msg.charCodeAt(i + 2) << 8 | msg.charCodeAt(i + 3);
+    word_array.push(j)
+  }
+  switch (msg_len % 4) {
+    case 0:
+      i = 0x080000000;
+      break;
+    case 1:
+      i = msg.charCodeAt(msg_len - 1) << 24 | 0x0800000;
+      break;
+    case 2:
+      i = msg.charCodeAt(msg_len - 2) << 24 | msg.charCodeAt(msg_len - 1) << 16 | 0x08000;
+      break;
+    case 3:
+      i = msg.charCodeAt(msg_len - 3) << 24 | msg.charCodeAt(msg_len - 2) << 16 | msg.charCodeAt(msg_len - 1) << 8 | 0x80;
+      break
+  }
+  word_array.push(i);
+  while ((word_array.length % 16) != 14) word_array.push(0);
+  word_array.push(msg_len >>> 29);
+  word_array.push((msg_len << 3) & 0x0ffffffff);
+  for (blockstart = 0; blockstart < word_array.length; blockstart += 16) {
+    for (i = 0; i < 16; i++) W[i] = word_array[blockstart + i];
+    for (i = 16; i <= 79; i++) W[i] = rotate_left(W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16], 1);
+    A = H0;
+    B = H1;
+    C = H2;
+    D = H3;
+    E = H4;
+    for (i = 0; i <= 19; i++) {
+      temp = (rotate_left(A, 5) + ((B & C) | (~B & D)) + E + W[i] + 0x5A827999) & 0x0ffffffff;
+      E = D;
+      D = C;
+      C = rotate_left(B, 30);
+      B = A;
+      A = temp
+    }
+    for (i = 20; i <= 39; i++) {
+      temp = (rotate_left(A, 5) + (B ^ C ^ D) + E + W[i] + 0x6ED9EBA1) & 0x0ffffffff;
+      E = D;
+      D = C;
+      C = rotate_left(B, 30);
+      B = A;
+      A = temp
+    }
+    for (i = 40; i <= 59; i++) {
+      temp = (rotate_left(A, 5) + ((B & C) | (B & D) | (C & D)) + E + W[i] + 0x8F1BBCDC) & 0x0ffffffff;
+      E = D;
+      D = C;
+      C = rotate_left(B, 30);
+      B = A;
+      A = temp
+    }
+    for (i = 60; i <= 79; i++) {
+      temp = (rotate_left(A, 5) + (B ^ C ^ D) + E + W[i] + 0xCA62C1D6) & 0x0ffffffff;
+      E = D;
+      D = C;
+      C = rotate_left(B, 30);
+      B = A;
+      A = temp
+    }
+    H0 = (H0 + A) & 0x0ffffffff;
+    H1 = (H1 + B) & 0x0ffffffff;
+    H2 = (H2 + C) & 0x0ffffffff;
+    H3 = (H3 + D) & 0x0ffffffff;
+    H4 = (H4 + E) & 0x0ffffffff
+  }
+  var temp = cvt_hex(H0) + cvt_hex(H1) + cvt_hex(H2) + cvt_hex(H3) + cvt_hex(H4);
+  return temp.toLowerCase()
+}
+
+// ============= 签名函数 =============
+function getSign(type = 'app', params = {}, body = null, method = 'GET') {
+  const config = type === 'h5' ? APP_CONFIG.h5 : APP_CONFIG.app;
+
+  const querySortedStr = toQuery(params);
+
+  const timestamp = new Date().getTime();
+  const nonce = type === 'h5' ? getUuid() : timestamp + getRandomChars();
+
+  let bodyStr = '';
+  if (method === 'DELETE') {
+    bodyStr = '';
+  } else if (body && typeof body === 'object' && Object.keys(body).length > 0) {
+    bodyStr = JSON.stringify(body);
+  }
+
+  let signature;
+  if (type === 'h5') {
+    signature = `${querySortedStr}appId=${config.appId}&nonce=${nonce}&timestamp=${timestamp}${config.appSecret}`;
+  } else {
+    signature = `${querySortedStr}${bodyStr}appId=${config.appId}&nonce=${nonce}&timestamp=${timestamp}${config.appSecret}`;
+  }
+
+  const sign = md5(sha1(signature), 32).toString();
+
+  if (DEBUG_LOG) {
+    console.log(`[getSign] type=${type}, method=${method}, nonce=${nonce}, timestamp=${timestamp}`);
+    console.log(`[getSign] querySortedStr: ${querySortedStr}`);
+    console.log(`[getSign] bodyStr: ${bodyStr}`);
+    console.log(`[getSign] signature: ${signature}`);
+    console.log(`[getSign] sign: ${sign}`);
+  }
+
+  return {
+    'cfmoto-x-param': `appId=${config.appId}&nonce=${nonce}&timestamp=${timestamp}`,
+    'cfmoto-x-sign': sign,
+    'cfmoto-x-sign-type': '0'
+  };
+}
+
+// ============= 工具函数 ===============
+const __PARAMS = (() => {
+  const obj = {};
+  try {
+    const qp = args.queryParameters || {};
+    for (const k of Object.keys(qp))
+      obj[k] = decodeURIComponent(String(qp[k] ?? ""));
+  } catch { }
+  try {
+    const raw = args.widgetParameter || "";
+    if (raw) {
+      raw
+        .split("&")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((kv) => {
+          const [k, v] = kv.split("=");
+          if (k) obj[k] = decodeURIComponent(v || "");
+        });
+    }
+  } catch { }
+  return obj;
+})();
+
+function getParam(key) {
+  const v = __PARAMS[key];
+  return v == null ? null : String(v);
+}
+
+const ALLOW_WIDGET_SIGN = (getParam("widgetSign") || "1") !== "0";
+
+function todayStrYYYY_MM_DD_withDots() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}.${m}.${day}`;
+}
+
+function monthStrYYYY_MM_withDots() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}.${m}`;
+}
+
+function monthStrYYYY_MM() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  return `${y}-${m}`;
+}
+
+function calcDaysUntilLottery(continueDays) {
+  const cd = Number(continueDays || 0);
+  if (!isFinite(cd) || cd <= 0) return 30;
+  let days = 30 - (cd % 30);
+  if (cd % 30 === 0) days = 0;
+  return days;
+}
+
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function joinUrl(base, path) {
+  const b = String(base || "").trim().replace(/\/+$/, "");
+  const p = String(path || "").trim().replace(/^\/+/, "");
+  return `${b}/${p}`;
+}
+
+function toQuery(params = {}) {
+  const keys = Object.keys(params)
+    .filter((k) => params[k] !== undefined && params[k] !== null)
+    .sort();
+  if (keys.length === 0) return "";
+  return keys.map((k) => `${k}=${params[k]}`).join("&");
+}
+
+function toMinutesStr(min) {
+  const m = Number(min || 0);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest ? `${h}h${rest}m` : `${h}h`;
+}
+
+// ============= 延迟函数 =============
+function sleep(ms) {
+  return new Promise(resolve => {
+    Timer.schedule(ms / 1000, false, resolve);
+  });
+}
+
+// ============= 持久化 ===============
+const FM = FileManager.local();
+const STATE_FILE = FM.joinPath(FM.documentsDirectory(), "zeeho_signin.json");
+
+function readState() {
+  try {
+    if (!FM.fileExists(STATE_FILE)) return {};
+    const txt = FM.readString(STATE_FILE) || "";
+    if (!txt.trim()) return {};
+    const v = JSON.parse(txt);
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeState(obj) {
+  try {
+    const payload = obj && typeof obj === "object" ? obj : {};
+    delete payload.token;
+    const prevState = readState();
+    if (payload.totalPoints === 0 && prevState.totalPoints > 0) {
+      payload.totalPoints = prevState.totalPoints;
+    }
+    FM.writeString(STATE_FILE, JSON.stringify(payload, null, 2));
+  } catch (e) {
+    console.error("[writeState] error:", String(e?.message || e));
+  }
+}
+
+// ============= 请求封装 =============
+
+async function requestWithSign(method, url, params, data, token, label = "") {
+  const signHeaders = getSign('app', params, data, method);
+  
+  const signQuery = toQuery(params);
+  const fullUrl = signQuery ? `${url}?${signQuery}` : url;
+
+  const req = new Request(fullUrl);
+  req.method = method;
+  
+  const cleanToken = String(token).replace(/^[bB]earer\s+/i, "").trim();
+  
+  req.headers = {
+    "Content-Type": "application/json;charset=UTF-8",
+    "Accept-Language": "zh-CN",
+    "interfaceversion": "2",
+    "Authorization": `Bearer ${cleanToken}`,
+    ...signHeaders
+  };
+  
+  const uid = (getParam("userId") || readState().userId || "").trim();
+  if (uid) {
+    req.headers["user_id"] = uid;
+  }
+  
+  req.timeoutInterval = 10;
+
+  if (data && (method === "POST" || method === "DELETE" || method === "PUT")) {
+    req.body = typeof data === "string" ? data : JSON.stringify(data);
+  }
+
+  const t0 = Date.now();
+  let text = "",
+    status = -1;
+  try {
+    text = await req.loadString();
+    status = req.response?.statusCode || -1;
+  } catch (e) {
+    console.error(`[${label}] Request error:`, String(e?.message || e));
+    throw e;
+  }
+
+  const cost = Date.now() - t0;
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (_) { }
+
+  if (DEBUG_LOG) {
+    console.log(`[${label}] Status: ${status}, Cost: ${cost}ms`);
+    if (status >= 400) {
+      console.log(`[${label}] URL: ${fullUrl}`);
+      console.log(`[${label}] Headers:`, JSON.stringify(req.headers, null, 2));
+      if (text) console.log(`[${label}] Response:`, text.substring(0, 500));
+    }
+  }
+
+  if (status === 401 || status === 403) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  if (status >= 400 || !json) {
+    throw new Error(`${label} failed with status ${status}: ${text || "empty"}`);
+  }
+  return json;
+}
+
+async function requestH5WithSign(method, url, params, data, token, label = "") {
+  const signHeaders = getSign('h5', params, data, method);
+  
+  const signQuery = toQuery(params);
+  const fullUrl = signQuery ? `${url}?${signQuery}` : url;
+
+  const req = new Request(fullUrl);
+  req.method = method;
+  
+  const cleanToken = String(token).replace(/^[bB]earer\s+/i, "").trim();
+  
+  req.headers = {
+    "Content-Type": "application/json;charset=UTF-8",
+    "Accept-Language": "zh-CN",
+    "interfaceversion": "2",
+    "Authorization": `Bearer ${cleanToken}`,
+    ...signHeaders
+  };
+  
+  const uid = (getParam("userId") || readState().userId || "").trim();
+  if (uid) {
+    req.headers["user_id"] = uid;
+  }
+  
+  req.timeoutInterval = 10;
+
+  if (data && (method === "POST" || method === "DELETE" || method === "PUT")) {
+    req.body = typeof data === "string" ? data : JSON.stringify(data);
+  }
+
+  const t0 = Date.now();
+  let text = "",
+    status = -1;
+  try {
+    text = await req.loadString();
+    status = req.response?.statusCode || -1;
+  } catch (e) {
+    console.error(`[${label}] Request error:`, String(e?.message || e));
+    throw e;
+  }
+
+  const cost = Date.now() - t0;
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (_) { }
+
+  if (DEBUG_LOG) {
+    console.log(`[${label}] Status: ${status}, Cost: ${cost}ms`);
+    if (status >= 400) {
+      console.log(`[${label}] URL: ${fullUrl}`);
+      console.log(`[${label}] Headers:`, JSON.stringify(req.headers, null, 2));
+      if (text) console.log(`[${label}] Response:`, text.substring(0, 500));
+    }
+  }
+
+  if (status === 401 || status === 403) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  if (status >= 400 || !json) {
+    throw new Error(`${label} failed with status ${status}: ${text || "empty"}`);
+  }
+  return json;
+}
+
+// ========== Token过期处理 ==========
+async function handleTokenExpired() {
+  console.log("🔑 Token已过期，显示更新弹窗...");
+  
+  const isWidget = config.runsInWidget;
+  
+  if (isWidget) {
+    const w = new ListWidget();
+    w.addSpacer(10);
+    const t = w.addText("🔑 Token已过期");
+    t.font = Font.semiboldSystemFont(14);
+    t.textColor = Color.black();
+    w.addSpacer(8);
+    const m = w.addText("请在Scriptable内运行脚本更新Token");
+    m.font = Font.systemFont(11);
+    m.textColor = new Color("#6b7280");
+    w.addSpacer();
+    Script.setWidget(w);
+    Script.complete();
+    return false;
+  }
+  
+  const alert = new Alert();
+  alert.title = "🔑 Token已过期";
+  alert.message = "您的Token已过期，请重新获取并更新Token。\n\n获取方式：\n1. 打开ZEEHO App\n2. 抓包获取Authorization头\n3. 复制Token内容粘贴到下方\n\n💡 更新后会自动保存到脚本顶部的 HARDCODED_TOKEN";
+  alert.addTextField("粘贴新Token", "");
+  alert.addAction("✅ 更新Token");
+  alert.addCancelAction("取消");
+  
+  const idx = await alert.present();
+  if (idx === -1) {
+    return false;
+  }
+  
+  const newToken = alert.textFieldValue(0).trim();
+  if (!newToken) {
+    const alert2 = new Alert();
+    alert2.title = "❌ Token不能为空";
+    alert2.message = "请粘贴有效的Token";
+    alert2.addAction("确定");
+    await alert2.present();
+    return false;
+  }
+  
+  const script = await FM.readString(module.filename);
+  const updatedScript = script.replace(
+    /const HARDCODED_TOKEN = ".*?";/,
+    `const HARDCODED_TOKEN = "${newToken}";`
+  );
+  await FM.writeString(module.filename, updatedScript);
+  
+  const alert2 = new Alert();
+  alert2.title = "✅ Token已更新";
+  alert2.message = `新Token: ${newToken.substring(0, 10)}...\n已保存到脚本顶部，请重新运行脚本。`;
+  alert2.addAction("确定");
+  await alert2.present();
+  
+  return true;
+}
+
+// ========== 安全请求包装器 ==========
+async function safeRequest(fn, ...args) {
+  try {
+    return await fn(...args);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (msg === "TOKEN_EXPIRED") {
+      throw new Error("TOKEN_EXPIRED");
+    }
+    throw e;
+  }
+}
+
+// ========== 接口封装 ==========
+
+async function fetchHomeRideInfo({ vinNo, token }) {
+  const url = joinUrl(BASE, API.homeRideInfo);
+  return await safeRequest(requestWithSign, "GET", url, { vinNo }, "", token, "homeRideInfo");
+}
+
+async function fetchMyRideInfo({ vinNo, month, token }) {
+  const url = joinUrl(BASE, API.myRideInfo);
+  return await safeRequest(requestWithSign, "GET", url, { vinNo, month }, "", token, "myRideInfo");
+}
+
+async function fetchVehicleWidgets({ vinNo, token }) {
+  const url = joinUrl(BASE, API.vehicleWidgets(vinNo));
+  return await safeRequest(requestWithSign, "GET", url, {}, "", token, "vehicleWidgets");
+}
+
+async function fetchTotalIntegral({ token }) {
+  const url = joinUrl(BASE, API.totalIntegral);
+  return await safeRequest(requestWithSign, "GET", url, {}, "", token, "totalIntegral");
+}
+
+async function fetchTirePressure({ vinNo, token }) {
+  const url = joinUrl(BASE, API.tirePressure);
+  return await safeRequest(requestWithSign, "GET", url, { vinNo, timePeriodType: 1 }, "", token, "tirePressure");
+}
+
+async function fetchVehicleList({ token }) {
+  const url = joinUrl(BASE, API.vehicleList);
+  return await safeRequest(requestWithSign, "GET", url, {}, "", token, "vehicleList");
+}
+
+async function fetchVehicleHomePage({ vehicleId, uniqueIdentify, token }) {
+  const url = joinUrl(BASE, API.vehicleHomePage(vehicleId));
+  return await safeRequest(requestWithSign, "GET", url, { uniqueIdentify }, "", token, "vehicleHomePage");
+}
+
+async function postSignIn({ token }) {
+  const url = joinUrl(H5_BASE, API_SIGNIN_V1);
+  const params = { server_name: SERVER_NAME };
+  return await safeRequest(requestH5WithSign, "POST", url, params, null, token, "signin(POST)");
+}
+
+async function fetchSigninStatus({ token }) {
+  const url = joinUrl(H5_BASE, API_SIGNIN_INFO);
+  const params = { 
+    month: monthStrYYYY_MM(),
+    server_name: SERVER_NAME 
+  };
+  return await safeRequest(requestH5WithSign, "GET", url, params, null, token, "signin(GET status)");
+}
+
+async function fetchSigninLottery({ token }) {
+  const url = joinUrl(H5_BASE, API.signinLottery);
+  const params = { 
+    boxType: 0,
+    server_name: SERVER_NAME 
+  };
+  return await safeRequest(requestH5WithSign, "GET", url, params, null, token, "signinLottery");
+}
+
+async function fetchSupplementPrize({ supplementDate, token }) {
+  const url = "https://h5.zeehoev.com/cfmotoservermine/signin/supplementPrize";
+  const params = { supplementDate };
+  const signHeaders = getSign('h5', params);
+  const fullUrl = `${url}?${toQuery(params)}`;
+  
+  const req = new Request(fullUrl);
+  req.method = "GET";
+  req.timeoutInterval = 20;
+  
+  const cleanToken = String(token).replace(/^[bB]earer\s+/i, "").trim();
+  req.headers = {
+    ...signHeaders,
+    "Authorization": `Bearer ${cleanToken}`
+  };
+  
+  try {
+    const text = await req.loadString();
+    const status = req.response?.statusCode || -1;
+    if (status === 401 || status === 403) {
+      throw new Error("TOKEN_EXPIRED");
+    }
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  } catch (e) {
+    if (String(e?.message || "") === "TOKEN_EXPIRED") {
+      throw new Error("TOKEN_EXPIRED");
+    }
+    throw e;
+  }
+}
+
+// ========== 🆕 获取电池充电状态 ==========
+async function fetchBatteryChargeState({ vinNo, token }) {
+  const url = joinUrl(BASE, API.batteryInfo(vinNo));
+  const result = await safeRequest(requestWithSign, "GET", url, {}, "", token, "batteryInfo");
+  const chargeStateStr = result?.data?.chargeStateStr || "未充电";
+  return chargeStateStr;
+}
+
+// ========== 🆕 发布动态相关接口 ==========
+
+async function publishArticle({ content, token }) {
+  const url = joinUrl(BASE, API.commonArticle);
+  const body = {
+    "postSubInfo": {
+      "topicList": []
+    },
+    "topicid": "",
+    "postcontent": content
+  };
+  return await safeRequest(requestWithSign, "POST", url, {}, body, token, "publishArticle");
+}
+
+async function fetchArticleList({ userId, token }) {
+  const url = joinUrl(BASE, API.mineArticleInfo);
+  const params = { userId: userId };
+  return await safeRequest(requestWithSign, "GET", url, params, null, token, "fetchArticleList");
+}
+
+async function likeArticle({ postId, token }) {
+  const url = joinUrl(BASE, API.likeFavorite);
+  const body = {
+    "postId": postId,
+    "kindFlag": "0"
+  };
+  return await safeRequest(requestWithSign, "POST", url, {}, body, token, "likeArticle");
+}
+
+async function shareArticle({ articleId, token }) {
+  const url = joinUrl(BASE, API.shareArticle(articleId));
+  return await safeRequest(requestWithSign, "PUT", url, {}, null, token, "shareArticle");
+}
+
+async function deleteArticle({ articleId, token }) {
+  const url = joinUrl(BASE, API.deleteArticle);
+  const params = {
+    articleId: articleId,
+    postType: "1"
+  };
+  return await safeRequest(requestWithSign, "DELETE", url, params, null, token, "deleteArticle");
+}
+
+// ========== 🆕 领取分享积分接口 ==========
+async function adjustByShare({ token }) {
+  const url = joinUrl(BASE, API.adjustByShare);
+  const result = await safeRequest(requestWithSign, "GET", url, {}, null, token, "adjustByShare");
+  console.log(`📝 领取分享积分响应: ${JSON.stringify(result)}`);
+  return result;
+}
+
+// ========== 🆕 自动发布动态流程 ==========
+async function autoPublishArticle(token, state) {
+  const today = todayISO();
+  
+  if (DEBUG_MODE) {
+    console.log("🐛 调试模式已开启，强制重新发布...");
+  } else {
+    if (state.lastPostDate === today && !FORCE_RESET) {
+      console.log("📝 今天已发布过动态，跳过");
+      return { skipped: true };
+    }
+  }
+  
+  if (!ENABLE_AUTO_POST) {
+    console.log("📝 自动发布功能已禁用");
+    return { skipped: true };
+  }
+  
+  console.log("📝 开始发布动态...");
+  console.log(`📝 发布内容: ${POST_CONTENT}`);
+  
+  try {
+    console.log("📝 步骤1: 发布动态...");
+    const publishResult = await publishArticle({ content: POST_CONTENT, token });
+    console.log(`📝 发布响应: ${JSON.stringify(publishResult)}`);
+    
+    if (!publishResult) {
+      console.error("❌ 发布动态失败: 响应为空");
+      return { ok: false, msg: "发布响应为空" };
+    }
+    
+    if (String(publishResult?.code) !== "10000") {
+      console.error(`❌ 发布动态失败: ${publishResult?.message || "未知错误"}`);
+      return { ok: false, msg: publishResult?.message || "发布失败" };
+    }
+    console.log("✅ 动态发布成功");
+    
+    await sleep(2000);
+    
+    console.log("📝 步骤2: 获取动态列表...");
+    const userId = state.userId || getParam("userId") || "";
+    if (!userId) {
+      console.error("❌ 获取动态列表失败: 缺少userId");
+      return { ok: false, msg: "缺少userId" };
+    }
+    
+    const listResult = await fetchArticleList({ userId: userId, token });
+    console.log(`📝 列表响应: ${JSON.stringify(listResult)}`);
+    
+    if (!listResult) {
+      console.error("❌ 获取动态列表失败: 响应为空");
+      return { ok: false, msg: "获取动态列表响应为空" };
+    }
+    
+    if (String(listResult?.code) !== "10000") {
+      console.error(`❌ 获取动态列表失败: ${listResult?.message || "未知错误"}`);
+      return { ok: false, msg: listResult?.message || "获取动态列表失败" };
+    }
+    
+    const articles = listResult?.data || [];
+    console.log(`📝 获取到 ${articles.length} 条动态`);
+    
+    if (articles.length === 0) {
+      console.error("❌ 没有找到动态");
+      return { ok: false, msg: "没有找到动态" };
+    }
+    
+    const firstArticle = articles[0];
+    const articleId = firstArticle.tuuid || firstArticle.id || firstArticle.articleId;
+    console.log(`✅ 获取到动态ID: ${articleId}`);
+    
+    await sleep(1000);
+    
+    console.log("📝 步骤3: 点赞动态...");
+    let likeSuccess = false;
+    try {
+      const likeResult = await likeArticle({ postId: articleId, token });
+      console.log(`📝 点赞响应: ${JSON.stringify(likeResult)}`);
+      if (String(likeResult?.code) === "10000") {
+        console.log("✅ 点赞成功");
+        likeSuccess = true;
+      } else {
+        console.log(`⚠️ 点赞失败: ${likeResult?.message || "未知错误"}`);
+      }
+    } catch (e) {
+      console.log(`⚠️ 点赞异常: ${String(e?.message || e)}`);
+    }
+    
+    await sleep(1000);
+    
+    console.log("📝 步骤4: 分享动态...");
+    let shareSuccess = false;
+    let sharePointsReceived = false;
+    try {
+      const shareResult = await shareArticle({ articleId: articleId, token });
+      console.log(`📝 分享响应: ${JSON.stringify(shareResult)}`);
+      if (String(shareResult?.code) === "10000") {
+        console.log("✅ 分享成功");
+        shareSuccess = true;
+        
+        // 🆕 分享成功后领取积分
+        try {
+          console.log("📝 领取分享积分...");
+          const adjustResult = await adjustByShare({ token });
+          if (String(adjustResult?.code) === "10000") {
+            console.log("✅ 领取分享积分成功");
+            sharePointsReceived = true;
+          } else {
+            console.log(`⚠️ 领取分享积分失败: ${adjustResult?.message || "未知错误"}`);
+          }
+        } catch (adjustErr) {
+          console.log(`⚠️ 领取分享积分异常: ${String(adjustErr?.message || adjustErr)}`);
+        }
+      } else {
+        console.log(`⚠️ 分享失败: ${shareResult?.message || "未知错误"}`);
+      }
+    } catch (e) {
+      console.log(`⚠️ 分享异常: ${String(e?.message || e)}`);
+    }
+    
+    await sleep(2000);
+    
+    console.log("📝 步骤5: 删除动态...");
+    let deleteSuccess = false;
+    try {
+      const deleteResult = await deleteArticle({ articleId: articleId, token });
+      console.log(`📝 删除响应: ${JSON.stringify(deleteResult)}`);
+      if (String(deleteResult?.code) === "10000") {
+        console.log("✅ 删除成功");
+        deleteSuccess = true;
+      } else {
+        console.log(`⚠️ 删除失败: ${deleteResult?.message || "未知错误"}`);
+      }
+    } catch (e) {
+      console.log(`⚠️ 删除异常: ${String(e?.message || e)}`);
+    }
+    
+    state.lastPostDate = today;
+    state.lastPostContent = POST_CONTENT;
+    state.lastPostLiked = likeSuccess;
+    state.lastPostShared = shareSuccess;
+    state.lastPostDeleted = deleteSuccess;
+    state.lastSharePointsReceived = sharePointsReceived;
+    writeState(state);
+    
+    return { 
+      ok: true, 
+      content: POST_CONTENT,
+      articleId: articleId,
+      liked: likeSuccess,
+      shared: shareSuccess,
+      deleted: deleteSuccess,
+      sharePointsReceived: sharePointsReceived
+    };
+    
+  } catch (e) {
+    const errMsg = String(e?.message || e);
+    console.error(`❌ 发布动态流程异常: ${errMsg}`);
+    if (errMsg === "TOKEN_EXPIRED" || errMsg.includes("TOKEN_EXPIRED")) {
+      throw new Error("TOKEN_EXPIRED");
+    }
+    return { ok: false, msg: errMsg || "发布流程异常" };
+  }
+}
+
+// ========== 数据适配函数 =========
+function adaptTirePressure(raw) {
+  const d = raw?.data || raw || {};
+  const list = Array.isArray(d.realTimeData) ? d.realTimeData : [];
+  const byPos = {};
+  for (const it of list) {
+    const pos = Number(it?.sensorPosition);
+    if (pos) byPos[pos] = it;
+  }
+  const fmtPressure = (it) => {
+    const warn = Number(it?.warningType ?? 0);
+    const v = String(it?.tirePressure ?? "").trim();
+    const n = parseFloat(v);
+    if (warn !== 0 || !v || !isFinite(n) || n <= 0) return "未绑定";
+    return `${v}bar`;
+  };
+  const fTempVal = byPos[1]?.tireTemp;
+  const rTempVal = byPos[2]?.tireTemp;
+  const fWarn = Number(byPos[1]?.warningType ?? 0);
+  const rWarn = Number(byPos[2]?.warningType ?? 0);
+  const fmtTemp = (v, warn = 0) => {
+    if (warn !== 0 || v == null) return "";
+    const s = String(v).trim();
+    const n = parseFloat(s);
+    if (!s || s.toLowerCase() === "null" || !isFinite(n) || n <= 0) return "";
+    return `${s}°C`;
+  };
+  const first = list[0] || null;
+  const second = list[1] || null;
+  const frontIt = byPos[1] || first;
+  const rearIt = byPos[2] || second;
+  const frontTempStr = fmtTemp(fTempVal, fWarn);
+  const rearTempStr = fmtTemp(rTempVal, rWarn);
+  return {
+    frontPressure: frontIt ? fmtPressure(frontIt) : "未绑定",
+    rearPressure: rearIt ? fmtPressure(rearIt) : "未绑定",
+    frontTemp: frontTempStr,
+    rearTemp: rearTempStr,
+    ambientTemp: frontTempStr || rearTempStr,
+  };
+}
+
+function adaptSigninStatus(raw) {
+  const d = raw?.data || raw || {};
+  const cont = Number(d.signCount ?? d.continueDays ?? d.days ?? 0);
+  const list = Array.isArray(d.scoreList) ? d.scoreList : [];
+  let todayScore = 0;
+  if (cont > 0 && list.length > 0) {
+    const cycleLen = list.length;
+    const idx = ((cont - 1) % cycleLen) + 1;
+    const hit = list.find((x) => Number(x.days) === idx);
+    const scr = Number(hit?.score ?? 0);
+    todayScore = isFinite(scr) ? scr : 0;
+  }
+  const daysUntil = calcDaysUntilLottery(cont);
+  const isBlindDay = cont > 0 && cont % 30 === 0;
+  let blindBoxScore = 0;
+  if (isBlindDay && list.length > 0) {
+    const hit30 = list.find((x) => Number(x.days) === 30);
+    const cycleLen = list.length;
+    const idx = ((cont - 1) % cycleLen) + 1;
+    const hitCycle = list.find((x) => Number(x.days) === idx);
+    const scr = Number(hit30?.score ?? hitCycle?.score ?? todayScore ?? 0);
+    blindBoxScore = isFinite(scr) ? scr : 0;
+  }
+
+  const lastTime = String(d.lastTime || "").trim();
+  let alreadySignedToday = false;
+  let lastSignDate = "";
+  if (lastTime) {
+    const datePart = lastTime.split(/\s+/)[0].replace(/\./g, "-").slice(0, 10);
+    lastSignDate = datePart;
+    alreadySignedToday = datePart === todayISO();
+  }
+
+  return {
+    todayScore,
+    continueDays: isFinite(cont) ? cont : 0,
+    daysUntilLottery: daysUntil,
+    isBlindDay,
+    blindBoxScore,
+    alreadySignedToday,
+    lastSignDate,
+    lastTime,
+  };
+}
+
+function adaptTotalIntegral(raw) {
+  const d = raw?.data || raw || {};
+  const n = Number(d.integralTotal ?? d.totalIntegral ?? d.integral ?? d.score ?? 0);
+  return isFinite(n) && n >= 0 ? n : 0;
+}
+
+function adaptTodayRide(homeRaw, myRideRaw) {
+  const h = homeRaw?.data || homeRaw || {};
+  const d = myRideRaw?.data || myRideRaw || {};
+  const list = Array.isArray(d.rideRecordList) ? d.rideRecordList : [];
+  const todayKey = todayStrYYYY_MM_DD_withDots();
+  const day = list.find((x) => String(x?.date || "") === todayKey) || list[list.length - 1] || {};
+  const mileages = Array.isArray(h.mileages) ? h.mileages : [];
+  const avg = mileages.length > 0 ? mileages.reduce((s, x) => s + Number(x || 0), 0) / mileages.length : 0;
+  return {
+    distanceKm: Number(day.rideMileage ?? h.rideMileageDay ?? 0),
+    durationMin: Number(day.ridingTimeDayUnitMinute ?? h.lastRidingTimeUnitMinute ?? 0),
+    maxSpeedKmh: Number(day.maxSpeed ?? 0),
+    accelCount: Number(day.accelerationTimesDay ?? 0),
+    brakeCount: Number(day.brakesTimesDay ?? 0),
+    lastRideMileage: Number(h.lastRideMileage ?? 0),
+    lastRideDurationMin: Number(h.lastRidingTimeUnitMinute ?? 0),
+    avgMileageKm: isFinite(avg) ? Number(avg.toFixed(1)) : 0,
+  };
+}
+
+function adaptWidgets(raw) {
+  const d = raw?.data || raw || {};
+  const loc = d.location || {};
+  const soc = Number(d.bmssoc ?? d.batteryLevel ?? 0);
+  const range = Number(d.hmiRidableMile ?? d.vehicleRidableMile ?? d.ridableMileage ?? 0);
+  const address = String(d.address || "").trim();
+  const locationTime = String(loc.locationTime || "").trim();
+  const pulledOut = String(d.batteryPullOutFlag ?? "") === "1";
+  let statusText = address || "位置未知";
+  if (pulledOut) statusText = "电池已拔出";
+  return {
+    batteryPercent: Math.max(0, Math.min(100, isFinite(soc) ? soc : 0)),
+    residualRangeKm: isFinite(range) ? range : 0,
+    address,
+    locationTime,
+    longitude: Number(loc.longitude),
+    latitude: Number(loc.latitude),
+    statusText,
+    vehicleName: String(d.vehicleName || "").trim(),
+    vehicleImageUrl: String(d.vehicleScalePicUrl || d.vehiclePicUrl || "").trim(),
+    headLockState: String(d.headLockState ?? "").trim(),
+    batteryPullOutFlag: String(d.batteryPullOutFlag ?? "").trim(),
+  };
+}
+
+// ========== 配置函数 ==========
+function mapVehicleList(raw) {
+  const list = Array.isArray(raw?.data) ? raw.data : [];
+  return list.map((it) => ({
+    vinNo: String(it?.vinNo || it?.frameNo || "").trim(),
+    name: String(it?.vehicleName || it?.vehicleType || it?.deviceName || "车辆").trim() || "车辆",
+    pic: String(it?.vehiclePicUrl || "").trim(),
+    bmssoc: String(it?.bmssoc || it?.bmssocStr || "").trim(),
+    vehicleType: String(it?.vehicleType || "").trim(),
+    licensePlate: it?.licensePlate || null,
+  })).filter((x) => x.vinNo);
+}
+
+async function chooseVehicle(token) {
+  let items = [];
+  try {
+    const url = joinUrl(BASE, API.vehicleList);
+    const res = await requestWithSign("GET", url, {}, "", token, "vehicleList");
+    items = mapVehicleList(res);
+  } catch (e) {
+    console.error("获取车辆列表失败:", e);
+    throw new Error("获取车辆列表失败，请检查Token");
+  }
+  
+  if (!items.length) {
+    throw new Error("未能获取到车辆列表，请检查Token或稍后再试");
+  }
+
+  const a = new Alert();
+  a.title = "🚗 选择你的车辆";
+  a.message = `找到 ${items.length} 辆车，请选择用于小组件显示的车辆`;
+  
+  const show = items.slice(0, 12);
+  show.forEach((v) => {
+    const desc = [
+      v.name,
+      v.vehicleType ? `型号:${v.vehicleType}` : null,
+      v.licensePlate ? `车牌:${v.licensePlate}` : null,
+      v.vinNo ? `车架号:${v.vinNo.slice(-6)}` : null,
+    ].filter(Boolean).join(" · ");
+    a.addAction(desc);
+  });
+  a.addCancelAction("取消");
+  
+  const idx = await a.present();
+  if (idx === -1) throw new Error("已取消选择");
+  return show[idx];
+}
+
+async function promptForToken(initial = "") {
+  const a = new Alert();
+  a.title = "🔑 设置Token";
+  a.message = "请粘贴ZEEHO Token。\n\n获取方式：\n1. 打开ZEEHO App\n2. 抓包获取Authorization头\n3. 复制Token内容粘贴到下方\n\n💡 输入后会自动保存到脚本顶部的 HARDCODED_TOKEN";
+  a.addTextField("在此粘贴Token包括Bearer ", initial);
+  a.addAction("确定");
+  a.addCancelAction("取消");
+  const idx = await a.present();
+  if (idx === -1) throw new Error("已取消");
+  return a.textFieldValue(0).trim();
+}
+
+async function promptForImageUrl(initial = "") {
+  const a = new Alert();
+  a.title = "车辆图片";
+  a.message = "输入URL可自定义图片，留空则自动抓取app图片";
+  a.addTextField("默认留空自动抓取图片", initial);
+  a.addAction("确定");
+  a.addCancelAction("跳过");
+  const idx = await a.present();
+  if (idx === -1) return "";
+  return a.textFieldValue(0).trim();
+}
+
+async function saveTokenToScript(token) {
+  try {
+    const script = await FM.readString(module.filename);
+    const updatedScript = script.replace(
+      /const HARDCODED_TOKEN = ".*?";/,
+      `const HARDCODED_TOKEN = "${token}";`
+    );
+    await FM.writeString(module.filename, updatedScript);
+    return true;
+  } catch (e) {
+    console.error("保存Token到脚本失败:", e);
+    return false;
+  }
+}
+
+async function selectVehicleForce(token, state) {
+  try {
+    const picked = await chooseVehicle(token);
+    state.vinNo = picked.vinNo;
+    state.vehicleName = picked.name;
+    state.vehicleType = picked.vehicleType || "";
+    state.licensePlate = picked.licensePlate || "";
+    const imgInput = await promptForImageUrl("");
+    if (imgInput) state.vehicleImageUrl = imgInput;
+    else state.vehicleImageUrl = picked.pic || "";
+    writeState(state);
+    console.log(`✅ 已选择车辆: ${picked.name} (${picked.vinNo})`);
+    return true;
+  } catch (e) {
+    console.error("选择车辆失败:", e);
+    return false;
+  }
+}
+
+async function ensureFirstRunConfig(state) {
+  const pToken = (getParam("token") || "").trim();
+  let token = pToken || HARDCODED_TOKEN || "";
+  
+  if (pToken) {
+    await saveTokenToScript(pToken);
+    token = pToken;
+  }
+
+  if (!token) {
+    const t = await promptForToken("");
+    if (!t) throw new Error("Token为空");
+    token = t;
+    await saveTokenToScript(t);
+  }
+  
+  console.log("🚗 开始选择车辆...");
+  const picked = await chooseVehicle(token);
+  state.vinNo = picked.vinNo;
+  state.vehicleName = picked.name;
+  state.vehicleType = picked.vehicleType || "";
+  state.licensePlate = picked.licensePlate || "";
+  
+  const imgInput = await promptForImageUrl("");
+  if (imgInput) state.vehicleImageUrl = imgInput;
+  else state.vehicleImageUrl = picked.pic || "";
+  
+  writeState(state);
+  
+  console.log(`✅ 车辆选择完成: ${picked.name} (${picked.vinNo})`);
+  return state;
+}
+
+function buildConfigRequiredWidget() {
+  const w = new ListWidget();
+  w.addSpacer(10);
+  const t = w.addText("🔑 需要首次配置");
+  t.font = Font.semiboldSystemFont(14);
+  t.textColor = Color.black();
+  w.addSpacer(8);
+  const m = w.addText("请在Scriptable内运行脚本，输入Token并选择车辆");
+  m.font = Font.systemFont(11);
+  m.textColor = new Color("#6b7280");
+  w.addSpacer();
+  return w;
+}
+
+// ========== 通知和UI辅助 =========
+async function notifyBlindBoxResult({ ok, msg = "", prizeName = "", integral = "" }) {
+  try {
+    const n = new Notification();
+    n.threadIdentifier = "zeeho-blindbox-status";
+    n.sound = "default";
+    n.title = ok ? "🎁 ZEEHO 盲盒签到成功" : "⚠️ ZEEHO 盲盒签到失败";
+    if (ok) {
+      const parts = [];
+      if (prizeName) parts.push(String(prizeName).trim());
+      if (integral != null && String(integral).trim()) parts.push(`${String(integral).trim()}积分`);
+      n.body = parts.length ? parts.join(" · ") : "盲盒奖励已触发";
+    } else {
+      n.body = msg || "盲盒请求失败";
+    }
+    await n.schedule();
+  } catch (e) {
+    console.error("[notifyBlindBoxResult] error:", String(e?.message || e));
+  }
+}
+
+async function notifyPostResult({ ok, msg = "", content = "" }) {
+  try {
+    const n = new Notification();
+    n.threadIdentifier = "zeeho-post-status";
+    n.sound = "default";
+    n.title = ok ? "📝 ZEEHO 动态发布成功" : "⚠️ ZEEHO 动态发布失败";
+    if (ok) {
+      n.body = `已发布并删除: ${content}`;
+    } else {
+      n.body = msg || "发布失败";
+    }
+    await n.schedule();
+  } catch (e) {
+    console.error("[notifyPostResult] error:", String(e?.message || e));
+  }
+}
+
+function drawProgressBar(percent = 0, width = 120, height = 6, barColor = new Color("#10b981"), bgColor = new Color("#E5E7EB")) {
+  const p = Math.max(0, Math.min(100, Number(percent || 0)));
+  const dc = new DrawContext();
+  dc.size = new Size(width, height);
+  dc.opaque = false;
+  const r = height / 2;
+  dc.setFillColor(bgColor);
+  dc.fillEllipse(new Rect(0, 0, height, height));
+  if (width - height > 0) dc.fillRect(new Rect(r, 0, width - 2 * r, height));
+  dc.fillEllipse(new Rect(width - height, 0, height, height));
+  const fw = Math.round(width * (p / 100));
+  if (fw <= 0) return dc.getImage();
+  dc.setFillColor(barColor);
+  if (fw <= height) {
+    dc.fillEllipse(new Rect(0, 0, Math.max(2, fw), height));
+  } else {
+    dc.fillEllipse(new Rect(0, 0, height, height));
+    if (fw - height > 0) dc.fillRect(new Rect(r, 0, fw - height, height));
+    if (fw >= height) dc.fillEllipse(new Rect(fw - height, 0, height, height));
+  }
+  return dc.getImage();
+}
+
+async function loadVehicleImage(url) {
+  if (!url || url.trim() === "") return null;
+  const dir = FM.cacheDirectory?.() || FM.documentsDirectory();
+  const cachePath = FM.joinPath(dir, "zeeho_vehicle_cache.jpg");
+  const metaPath = FM.joinPath(dir, "zeeho_vehicle_cache.url");
+  try {
+    if (FM.fileExists(cachePath) && FM.fileExists(metaPath)) {
+      const cachedUrl = String(FM.readString(metaPath) || "");
+      if (cachedUrl === String(url)) {
+        return FM.readImage(cachePath);
+      }
+    }
+  } catch { }
+  try {
+    const req = new Request(url);
+    req.timeoutInterval = 6;
+    const img = await req.loadImage();
+    if (img) {
+      try {
+        FM.writeImage(cachePath, img);
+        FM.writeString(metaPath, String(url));
+      } catch { }
+    }
+    return img;
+  } catch {
+    try {
+      if (FM.fileExists(cachePath)) return FM.readImage(cachePath);
+    } catch { }
+    return null;
+  }
+}
+
+// ========= UI：卡片 =========
+async function buildWidgetCard(data, chargeStateStr = "未充电") {
+  const g = new LinearGradient();
+  g.colors = [new Color("#EAF2FF"), Color.white()];
+  g.locations = [0, 1];
+
+  const w = new ListWidget();
+  w.backgroundGradient = g;
+  
+  const vSpacing = UI_CONFIG.verticalSpacing || 1;
+  const hSpacing = UI_CONFIG.horizontalSpacing || 3;
+  const padding = UI_CONFIG.padding || 8;
+  
+  w.setPadding(padding, padding + 2, padding, padding + 2);
+  w.spacing = vSpacing;
+  
+  try {
+    const runUrl = URLScheme.forRunningScript();
+    if (runUrl) w.url = runUrl;
+  } catch (_) { }
+
+  const family = config.widgetFamily || "medium";
+  const compact = family === "small";
+
+  // ========== 第一行：车辆名称 + 签到状态 + 盲盒状态 + 刷新时间 ==========
+  const row1 = w.addStack();
+  row1.layoutHorizontally();
+  row1.centerAlignContent();
+  row1.spacing = hSpacing;
+
+  // 显示车辆名称 - 使用蓝色加粗字体以便突出显示
+  const vehicleName = data.vehicleDisplayName || "车辆";
+  console.log(`🚗 显示车辆名称: ${vehicleName}`); // 调试日志
+  
+  const title = row1.addText(vehicleName);
+  title.font = Font.boldSystemFont(14);
+  title.textColor = new Color("#1a56db");
+  title.lineLimit = 1;
+  title.minimumScaleFactor = 0.7;
+  row1.addSpacer();
+
+  // 签到状态
+  const badge = row1.addStack();
+  badge.layoutHorizontally();
+  badge.setPadding(2, 6, 2, 6);
+  badge.cornerRadius = 10;
+  const signed = !!data.signedToday;
+  badge.backgroundColor = signed ? new Color("#DCFCE7") : new Color("#FEE2E2");
+  const badgeText = badge.addText(signed ? "已签到" : "未签到");
+  badgeText.font = Font.systemFont(9);
+  badgeText.textColor = signed ? new Color("#166534") : new Color("#991B1B");
+
+  // 盲盒状态
+  row1.addSpacer(4);
+  const cdays = isFinite(Number(data.points.continueDays)) ? Number(data.points.continueDays) : 0;
+  const untilBox = isFinite(Number(data.points.daysUntilLottery)) ? Number(data.points.daysUntilLottery) : calcDaysUntilLottery(cdays);
+  const isBlindDay = !!data.points.isBlindDay || (cdays > 0 && cdays % 30 === 0);
+  const blindScore = isFinite(Number(data.points.blindBoxScore)) ? Number(data.points.blindBoxScore) : Number(data.points.today || 0);
+
+  const boxBadge = row1.addStack();
+  boxBadge.layoutHorizontally();
+  boxBadge.setPadding(2, 6, 2, 6);
+  boxBadge.cornerRadius = 10;
+  boxBadge.backgroundColor = new Color("#FEF3C7");
+  const boxTxt = boxBadge.addText(isBlindDay ? `盲盒+${blindScore}` : `盲盒${untilBox}天`);
+  boxTxt.font = Font.systemFont(9);
+  boxTxt.textColor = new Color("#b45309");
+
+  // 刷新时间
+  row1.addSpacer(4);
+  const refreshTime = new Date();
+  const timeStr = `${String(refreshTime.getHours()).padStart(2, "0")}:${String(refreshTime.getMinutes()).padStart(2, "0")}`;
+  const refreshLabel = row1.addText(`${timeStr}`);
+  refreshLabel.font = Font.systemFont(8);
+  refreshLabel.textColor = new Color("#94a3b8");
+  refreshLabel.lineLimit = 1;
+
+  w.addSpacer(vSpacing);
+
+  // ========== 第二行：动态操作状态 ==========
+  const rowActions = w.addStack();
+  rowActions.layoutHorizontally();
+  rowActions.centerAlignContent();
+  rowActions.spacing = hSpacing;
+
+  const leftPlaceholder = rowActions.addText("车辆信息");
+  leftPlaceholder.font = Font.systemFont(9);
+  leftPlaceholder.textColor = new Color("#6b7280");
+  
+  rowActions.addSpacer();
+
+  const actionsStack = rowActions.addStack();
+  actionsStack.layoutHorizontally();
+  actionsStack.centerAlignContent();
+  actionsStack.spacing = 2;
+
+  if (DEBUG_MODE) {
+    const debugLabel = actionsStack.addText("🐛");
+    debugLabel.font = Font.systemFont(8);
+    debugLabel.textColor = new Color("#f59e0b");
+    actionsStack.addSpacer(2);
+  }
+
+  if (data.postStatus === "success") {
+    const postIcon = actionsStack.addText("✓发布");
+    postIcon.font = Font.systemFont(8);
+    postIcon.textColor = new Color("#166534");
+    
+    actionsStack.addSpacer(2);
+    
+    const likeIcon = actionsStack.addText(data.liked ? "✓点赞" : "✕点赞");
+    likeIcon.font = Font.systemFont(8);
+    likeIcon.textColor = data.liked ? new Color("#166534") : new Color("#991B1B");
+    
+    actionsStack.addSpacer(2);
+    
+    const shareIcon = actionsStack.addText(data.shared ? "✓分享" : "✕分享");
+    shareIcon.font = Font.systemFont(8);
+    shareIcon.textColor = data.shared ? new Color("#166534") : new Color("#991B1B");
+    
+    actionsStack.addSpacer(2);
+    
+    const deleteIcon = actionsStack.addText(data.deleted ? "✓删除" : "✕删除");
+    deleteIcon.font = Font.systemFont(8);
+    deleteIcon.textColor = data.deleted ? new Color("#166534") : new Color("#991B1B");
+  } else if (data.postStatus === "failed") {
+    const failText = actionsStack.addText("发布");
+    failText.font = Font.systemFont(8);
+    failText.textColor = new Color("#991B1B");
+  } else {
+    const waitText = actionsStack.addText("⏳待发布");
+    waitText.font = Font.systemFont(8);
+    waitText.textColor = new Color("#6b7280");
+  }
+
+  w.addSpacer(vSpacing);
+
+  // ========== 中间区域：车辆信息 + 图片 ==========
+  const mid = w.addStack();
+  mid.layoutHorizontally();
+  mid.centerAlignContent();
+  mid.spacing = hSpacing;
+
+  const LEFT_W = family === "small" ? 100 : 120;
+  const IMG_W = family === "small" ? 110 : 140;
+  const IMG_H = family === "small" ? 70 : 90;
+
+  const left = mid.addStack();
+  left.layoutVertically();
+  left.spacing = vSpacing;
+  left.size = new Size(LEFT_W, 0);
+
+  const percent = Math.round(data.batteryPercent);
+  const range = data.residualRangeKm;
+
+  const pctRow = left.addStack();
+  pctRow.layoutHorizontally();
+  pctRow.centerAlignContent();
+  pctRow.spacing = 4;
+
+  const pctText = pctRow.addText(`${percent}%`);
+  pctText.font = Font.heavySystemFont(18);
+  pctText.textColor = new Color("#0f172a");
+
+  const isCharging = chargeStateStr && chargeStateStr !== "未充电";
+  if (isCharging) {
+    const chargeIcon = pctRow.addText("🔋");
+    chargeIcon.font = Font.systemFont(14);
+    chargeIcon.textColor = new Color("#10b981");
+  }
+
+  const rangeText = pctRow.addText(`${range} km`);
+  rangeText.font = Font.systemFont(9);
+  rangeText.textColor = new Color("#6b7280");
+  rangeText.lineLimit = 1;
+
+  let barColor;
+  if (isCharging) {
+    barColor = new Color("#10b981");
+  } else if (percent <= 20) {
+    barColor = new Color("#ef4444");
+  } else if (percent <= 50) {
+    barColor = new Color("#f59e0b");
+  } else {
+    barColor = new Color("#00E0FF");
+  }
+  const barImg = drawProgressBar(percent, LEFT_W - 16, 6, barColor, new Color("#E5E7EB"));
+  const barView = left.addImage(barImg);
+  barView.imageSize = new Size(LEFT_W - 16, 6);
+
+  left.addSpacer(vSpacing);
+
+  const lastKmChip = isFinite(Number(data.today.lastRideMileage)) ? Number(data.today.lastRideMileage).toFixed(1) : "0.0";
+  const lastDur = isFinite(Number(data.today.lastRideDurationMin)) ? Number(data.today.lastRideDurationMin) : 0;
+  const maxSpd = Number(data.today.maxSpeedKmh ?? 0);
+
+  const metrics = left.addStack();
+  metrics.layoutHorizontally();
+  metrics.centerAlignContent();
+  metrics.spacing = 0;
+
+  function addMetric(parent, num, unit, label) {
+    const col = parent.addStack();
+    col.layoutVertically();
+    col.centerAlignContent();
+    col.setPadding(0, 1, 0, 1);
+
+    const top = col.addStack();
+    top.layoutHorizontally();
+    top.centerAlignContent();
+    top.spacing = 1;
+    const n = top.addText(String(num));
+    n.font = Font.semiboldSystemFont(11);
+    n.textColor = new Color("#0f172a");
+    n.lineLimit = 1;
+    if (unit) {
+      const u = top.addText(unit);
+      u.font = Font.systemFont(8);
+      u.textColor = new Color("#94a3b8");
+      u.lineLimit = 1;
+    }
+
+    const l = col.addText(label);
+    l.font = Font.systemFont(8);
+    l.textColor = new Color("#6b7280");
+    l.lineLimit = 1;
+    return col;
+  }
+
+  function addMetricSep(parent) {
+    parent.addSpacer(2);
+    const sep = parent.addText("|");
+    sep.font = Font.systemFont(8);
+    sep.textColor = new Color("#e2e8f0");
+    parent.addSpacer(2);
+  }
+
+  addMetric(metrics, lastKmChip, "km", "上次");
+  addMetricSep(metrics);
+  addMetric(metrics, lastDur, "min", "时长");
+  addMetricSep(metrics);
+  addMetric(metrics, maxSpd, "km/h", "极速");
+  metrics.addSpacer();
+
+  mid.addSpacer();
+
+  const right = mid.addStack();
+  right.layoutVertically();
+  right.centerAlignContent();
+
+  const preferImgUrl = data.vehicleImageUrl || IMAGE_URL;
+  if (preferImgUrl && preferImgUrl.trim() !== "") {
+    const img = await loadVehicleImage(preferImgUrl);
+    if (img) {
+      const vehicleImg = right.addImage(img);
+      vehicleImg.imageSize = new Size(IMG_W, IMG_H);
+      vehicleImg.applyFillingContentMode();
+      vehicleImg.rightAlignImage();
+    }
+  }
+
+  const tp = data.tire || { frontPressure: "", rearPressure: "", ambientTemp: "", frontTemp: "", rearTemp: "" };
+  const frontUnbound = !tp.frontPressure || tp.frontPressure === "未绑定";
+  const rearUnbound = !tp.rearPressure || tp.rearPressure === "未绑定";
+  if (!(frontUnbound && rearUnbound)) {
+    const tireRow = right.addStack();
+    tireRow.layoutHorizontally();
+    tireRow.setPadding(2, 0, 0, 0);
+
+    const tireLeftPair = tireRow.addStack();
+    tireLeftPair.layoutHorizontally();
+    tireLeftPair.spacing = 3;
+    const fPress = tireLeftPair.addText(tp.frontPressure ? `·${tp.frontPressure}` : "·未绑定");
+    fPress.font = Font.systemFont(8);
+    fPress.textColor = new Color("#6b7280");
+    if (tp.frontTemp) {
+      const fTemp = tireLeftPair.addText(tp.frontTemp);
+      fTemp.font = Font.systemFont(8);
+      fTemp.textColor = new Color("#0ea5e9");
+    }
+
+    tireRow.addSpacer();
+
+    const tireRightPair = tireRow.addStack();
+    tireRightPair.layoutHorizontally();
+    tireRightPair.spacing = 3;
+    const rPress = tireRightPair.addText(tp.rearPressure ? `·${tp.rearPressure}` : "·未绑定");
+    rPress.font = Font.systemFont(8);
+    rPress.textColor = new Color("#6b7280");
+    const rightTempVal = tp.rearTemp || tp.ambientTemp || "";
+    if (rightTempVal) {
+      const rTemp = tireRightPair.addText(rightTempVal);
+      rTemp.font = Font.systemFont(8);
+      rTemp.textColor = new Color("#0ea5e9");
+    }
+  }
+
+  w.addSpacer(vSpacing);
+
+  // ========== 底部：今日骑行数据 + 总积分 ==========
+  const row2 = w.addStack();
+  row2.layoutHorizontally();
+  row2.centerAlignContent();
+  row2.spacing = hSpacing;
+
+  const dist = isFinite(data.today.distanceKm) ? data.today.distanceKm.toFixed(1) : "—";
+  const dur = isFinite(data.today.durationMin) ? toMinutesStr(data.today.durationMin) : "—";
+  const summary = row2.addText(`今日 ${dist} km · ${dur}`);
+  summary.font = Font.systemFont(10);
+  summary.textColor = new Color("#6b7280");
+  summary.lineLimit = 1;
+  summary.minimumScaleFactor = 0.7;
+
+  row2.addSpacer();
+
+  const rightBottom = row2.addStack();
+  rightBottom.layoutHorizontally();
+  rightBottom.centerAlignContent();
+  rightBottom.spacing = 4;
+
+  const totalVal = isFinite(Number(data.points.total)) ? Number(data.points.total) : 0;
+  const todayVal = isFinite(Number(data.points.today)) ? Number(data.points.today) : 0;
+
+  const pts = rightBottom.addStack();
+  pts.layoutHorizontally();
+  pts.centerAlignContent();
+  pts.spacing = 3;
+
+  function addDot(parent) {
+    const s = parent.addText("·");
+    s.font = Font.systemFont(8);
+    s.textColor = new Color("#cbd5e1");
+  }
+
+  const t1 = pts.addText(compact ? `${totalVal}` : `总积分 ${totalVal}`);
+  t1.font = Font.semiboldSystemFont(compact ? 9 : 10);
+  t1.textColor = new Color("#0f172a");
+  t1.lineLimit = 1;
+  t1.minimumScaleFactor = 0.7;
+
+  addDot(pts);
+  const t2 = pts.addText(compact ? `+${todayVal}` : `今日 +${todayVal}`);
+  t2.font = Font.systemFont(9);
+  t2.textColor = new Color("#10b981");
+  t2.lineLimit = 1;
+
+  addDot(pts);
+  const t3 = pts.addText(compact ? `${cdays}天` : `连签 ${cdays}`);
+  t3.font = Font.systemFont(9);
+  t3.textColor = new Color("#3b82f6");
+  t3.lineLimit = 1;
+
+  return w;
+}
+
+// ============== manualSignIn ==============
+async function manualSignIn(token, state) {
+  try {
+    const res = await postSignIn({ token });
+    const code = String(res?.code || "");
+    const data = res?.data || {};
+
+    if (code === "10000") {
+      const todayAward = Number(data?.integralScore ?? 0);
+      const cont = Number(data?.continueDays ?? 0);
+      const uid = String(data?.id || data?.userId || data?.user?.id || "").trim();
+      const today = todayISO();
+
+      if (uid) state.userId = uid;
+      state.lastSignDate = today;
+      state.lastSignOk = true;
+      state.lastSignTime = new Date().toISOString();
+      state.todaySigned = true;
+      if (isFinite(cont) && cont > 0) state.continueDays = cont;
+      writeState(state);
+
+      return {
+        ok: true,
+        userId: state.userId || null,
+        todayAward: isFinite(todayAward) ? todayAward : null,
+        continueDays: Number(state.continueDays || 0),
+      };
+    }
+
+    const msg = String(res?.message || "");
+    if (/已签|重复|repeatedly/i.test(msg) || code === "repeatedly_operation") {
+      state.lastSignDate = todayISO();
+      state.todaySigned = true;
+      state.lastSignOk = true;
+      writeState(state);
+      return {
+        ok: true,
+        skipped: true,
+        continueDays: Number(state.continueDays || 0),
+      };
+    }
+
+    state.lastSignOk = false;
+    writeState(state);
+    return { ok: false, msg: msg || "签到失败" };
+  } catch (e) {
+    const errMsg = String(e?.message || e);
+    if (errMsg === "TOKEN_EXPIRED") {
+      throw new Error("TOKEN_EXPIRED");
+    }
+    state.lastSignOk = false;
+    state.todaySigned = false;
+    writeState(state);
+    return { ok: false, msg: errMsg };
+  }
+}
+
+// ============== 主流程 ===============
+async function main() {
+  console.log("🚀 ZEEHO 车辆小组件启动...");
+  
+  if (DEBUG_MODE) {
+    console.log("🐛 ========== 调试模式已开启 ==========");
+    console.log("🐛 将忽略'今天已发布'限制，强制执行完整流程");
+    console.log("🐛 ====================================");
+  }
+  
+  let state = readState() || {};
+  
+  if (state.uiConfig) {
+    UI_CONFIG.verticalSpacing = state.uiConfig.verticalSpacing || 1;
+    UI_CONFIG.horizontalSpacing = state.uiConfig.horizontalSpacing || 3;
+    UI_CONFIG.padding = state.uiConfig.padding || 8;
+  }
+  
+  if (FORCE_RESET) {
+    console.log("🔄 强制重置模式已开启，清除所有保存数据...");
+    try {
+      if (FM.fileExists(STATE_FILE)) {
+        FM.remove(STATE_FILE);
+        console.log("✅ 已删除状态文件");
+      }
+    } catch { }
+    state = {};
+  }
+  
+  const doReset = (getParam("reset") || "").trim() === "1" && !config.runsInWidget;
+  if (doReset) {
+    console.log("🔄 通过参数 reset=1 重置数据...");
+    try {
+      if (FM.fileExists(STATE_FILE)) FM.remove(STATE_FILE);
+    } catch { }
+    state = {};
+  }
+  
+  console.log("📊 当前State:", JSON.stringify(state, null, 2));
+  console.log("📝 所有参数:", JSON.stringify(__PARAMS, null, 2));
+
+  const isWidget = config.runsInWidget;
+  
+  const pToken = (getParam("token") || "").trim();
+  let token = pToken || HARDCODED_TOKEN || "";
+  
+  if (pToken && pToken !== HARDCODED_TOKEN) {
+    await saveTokenToScript(pToken);
+    token = pToken;
+  }
+  
+  if ((!token || !state.vinNo) && !isWidget) {
+    try {
+      console.log("📱 首次配置引导...");
+      state = await ensureFirstRunConfig(state) || state;
+      token = HARDCODED_TOKEN || state.token || "";
+      console.log("✅ 配置完成，Token: " + token.substring(0, 10) + "...");
+      console.log("✅ 已选择车辆: " + state.vehicleName);
+    } catch (e) {
+      console.log("配置取消或失败:", e);
+      if (!isWidget) {
+        const alert = new Alert();
+        alert.title = "❌ 配置取消";
+        alert.message = "需要配置Token和车辆才能使用此脚本。";
+        alert.addAction("确定");
+        await alert.present();
+      }
+      Script.complete();
+      return;
+    }
+  }
+  
+  if (!token && !isWidget) {
+    try {
+      const scriptContent = await FM.readString(module.filename);
+      const match = scriptContent.match(/const HARDCODED_TOKEN = "([^"]*)";/);
+      if (match && match[1]) {
+        token = match[1];
+        console.log("📖 从脚本中读取到Token: " + token.substring(0, 10) + "...");
+      }
+    } catch (e) {
+      console.error("读取脚本Token失败:", e);
+    }
+  }
+  
+  if ((!token || !state.vinNo) && isWidget) {
+    console.log("📱 Widget模式：未配置，显示提示");
+    const w = buildConfigRequiredWidget();
+    Script.setWidget(w);
+    Script.complete();
+    return;
+  }
+  
+  const vinNo = state.vinNo || "";
+  
+  if (!token || !vinNo) {
+    if (isWidget) {
+      const w = buildConfigRequiredWidget();
+      Script.setWidget(w);
+      Script.complete();
+      return;
+    }
+    const alert = new Alert();
+    alert.title = "❌ 配置不完整";
+    alert.message = "请确保已配置Token和车辆。";
+    alert.addAction("确定");
+    await alert.present();
+    Script.complete();
+    return;
+  }
+
+  console.log(`✅ 使用Token: ${token.substring(0, 10)}...`);
+  console.log(`✅ 使用车辆: ${state.vehicleName || vinNo}`);
+
+  const today = todayISO();
+
+  if ((state.baselineDate || "") !== today) {
+    state.baselineDate = today;
+    state.baselinePoints = isFinite(Number(state.totalPoints)) ? Number(state.totalPoints) : 0;
+    if ((state.lastSignDate || "") !== today) {
+      state.todaySigned = false;
+    }
+    writeState(state);
+  }
+
+  let alreadySignedToday = false;
+  let pointsTotal = Number(state.totalPoints || 0);
+  let continueDays = Number(state.continueDays || 0);
+  let todayDelta = 0;
+  let todayAwardFromSignin = null;
+  let didSignInNow = false;
+  let daysUntilLottery = calcDaysUntilLottery(continueDays);
+  let isBlindDay = continueDays > 0 && continueDays % 30 === 0;
+  let blindBoxScore = 0;
+
+  let homeRideRaw = {}, myRideRaw = {}, widgetsRaw = {}, tireRaw = {}, statusRaw = {}, integralRaw = {};
+  let chargeStateStr = "未充电";
+  
+  try {
+    [
+      statusRaw,
+      integralRaw,
+      homeRideRaw,
+      myRideRaw,
+      widgetsRaw,
+      tireRaw,
+      chargeStateStr,
+    ] = await Promise.all([
+      fetchSigninStatus({ token }).catch(() => ({})),
+      fetchTotalIntegral({ token }).catch(() => ({})),
+      fetchHomeRideInfo({ vinNo, token }).catch(() => ({})),
+      fetchMyRideInfo({ vinNo, month: monthStrYYYY_MM_withDots(), token }).catch(() => ({})),
+      fetchVehicleWidgets({ vinNo, token }).catch(() => ({})),
+      fetchTirePressure({ vinNo, token }).catch(() => ({})),
+      fetchBatteryChargeState({ vinNo, token }).catch(() => "未充电"),
+    ]);
+  } catch (e) {
+    const errMsg = String(e?.message || e);
+    if (errMsg === "TOKEN_EXPIRED") {
+      console.log("🔑 Token已过期，触发更新流程...");
+      const updated = await handleTokenExpired();
+      if (updated) {
+        Script.complete();
+        return;
+      } else {
+        if (isWidget) {
+          const w = new ListWidget();
+          w.addSpacer(10);
+          const t = w.addText("🔑 Token已过期");
+          t.font = Font.semiboldSystemFont(14);
+          t.textColor = Color.black();
+          w.addSpacer(8);
+          const m = w.addText("请更新Token后重试");
+          m.font = Font.systemFont(11);
+          m.textColor = new Color("#6b7280");
+          w.addSpacer();
+          Script.setWidget(w);
+        } else {
+          const alert = new Alert();
+          alert.title = "⚠️ Token已过期";
+          alert.message = "请更新Token后重新运行脚本。";
+          alert.addAction("确定");
+          await alert.present();
+        }
+        Script.complete();
+        return;
+      }
+    }
+    console.error("数据获取失败：", errMsg);
+  }
+
+  const st0 = adaptSigninStatus(statusRaw);
+  alreadySignedToday = !!st0.alreadySignedToday;
+  continueDays = Number(st0.continueDays || continueDays);
+  todayDelta = Number(st0.todayScore || 0);
+  daysUntilLottery = Number(st0.daysUntilLottery ?? daysUntilLottery);
+  isBlindDay = !!st0.isBlindDay;
+  blindBoxScore = Number(st0.blindBoxScore || 0);
+  if (st0.lastSignDate) {
+    state.lastSignDate = st0.lastSignDate;
+    state.lastSignTime = st0.lastTime || "";
+  }
+  state.todaySigned = alreadySignedToday;
+  state.lastSignOk = alreadySignedToday;
+  if (continueDays > 0) state.continueDays = continueDays;
+
+  const integralOk = String(integralRaw?.code || "") === "10000" || integralRaw?.data != null;
+  if (integralOk) {
+    pointsTotal = adaptTotalIntegral(integralRaw);
+    state.totalPoints = pointsTotal;
+  }
+  writeState(state);
+
+  if (!alreadySignedToday && (ALLOW_WIDGET_SIGN || !config.runsInWidget)) {
+    try {
+      const signRes = await manualSignIn(token, state);
+      if (signRes.ok) {
+        didSignInNow = !signRes.skipped;
+        alreadySignedToday = true;
+        continueDays = Number(signRes.continueDays || state.continueDays || continueDays) || 0;
+        todayAwardFromSignin = isFinite(Number(signRes.todayAward)) ? Number(signRes.todayAward) : null;
+        daysUntilLottery = calcDaysUntilLottery(continueDays);
+        isBlindDay = continueDays > 0 && continueDays % 30 === 0;
+        if (todayAwardFromSignin > 0) todayDelta = todayAwardFromSignin;
+        try {
+          const int2 = await fetchTotalIntegral({ token });
+          if (String(int2?.code || "") === "10000" || int2?.data != null) {
+            pointsTotal = adaptTotalIntegral(int2);
+            state.totalPoints = pointsTotal;
+            writeState(state);
+          }
+        } catch { }
+      }
+    } catch (e) {
+      const errMsg = String(e?.message || e);
+      if (errMsg === "TOKEN_EXPIRED") {
+        console.log("🔑 Token已过期，触发更新流程...");
+        const updated = await handleTokenExpired();
+        if (updated) {
+          Script.complete();
+          return;
+        } else {
+          if (isWidget) {
+            const w = new ListWidget();
+            w.addSpacer(10);
+            const t = w.addText("🔑 Token已过期");
+            t.font = Font.semiboldSystemFont(14);
+            t.textColor = Color.black();
+            w.addSpacer(8);
+            const m = w.addText("请更新Token后重试");
+            m.font = Font.systemFont(11);
+            m.textColor = new Color("#6b7280");
+            w.addSpacer();
+            Script.setWidget(w);
+          } else {
+            const alert = new Alert();
+            alert.title = "⚠️ Token已过期";
+            alert.message = "请更新Token后重新运行脚本。";
+            alert.addAction("确定");
+            await alert.present();
+          }
+          Script.complete();
+          return;
+        }
+      }
+      console.error("签到失败:", errMsg);
+    }
+  }
+
+  if (didSignInNow && isBlindDay && String(state.lastBlindBoxDate || "") !== today) {
+    try {
+      let res = await fetchSigninLottery({ token }).catch(() => null);
+      if (!res || (String(res?.code) !== "10000" && !res?.success)) {
+        res = await fetchSupplementPrize({ supplementDate: state.lastSignDate || today, token });
+      }
+      const code = String(res?.code || "");
+      const ok = code === "10000" || res?.success === true;
+      if (ok) {
+        const d = res?.data || {};
+        const prizeName = String(d.prizesName || d.prizeName || "").trim();
+        const integral = String(d.integral ?? d.score ?? "").trim();
+        state.lastBlindBoxDate = today;
+        state.lastBlindBoxPrize = prizeName || "";
+        state.lastBlindBoxIntegral = integral || "";
+        if (integral && isFinite(Number(integral))) {
+          blindBoxScore = Number(integral);
+        }
+        writeState(state);
+        notifyBlindBoxResult({ ok: true, prizeName, integral });
+      } else {
+        if (/已领|已抽|重复|30121/i.test(String(res?.message || ""))) {
+          state.lastBlindBoxDate = today;
+          writeState(state);
+        }
+        notifyBlindBoxResult({ ok: false, msg: res?.message || "" });
+      }
+    } catch (e) {
+      const errMsg = String(e?.message || e);
+      if (errMsg === "TOKEN_EXPIRED") {
+        console.log("🔑 Token已过期，触发更新流程...");
+        const updated = await handleTokenExpired();
+        if (updated) {
+          Script.complete();
+          return;
+        }
+      }
+      notifyBlindBoxResult({ ok: false, msg: errMsg });
+    }
+  }
+
+  // ========== 执行发布动态 ==========
+  let postStatus = state.lastPostDate === today ? "success" : null;
+  let postContent = "";
+  let liked = false;
+  let shared = false;
+  let deleted = false;
+  let sharePointsReceived = false;
+  
+  if (ENABLE_AUTO_POST && state.userId) {
+    try {
+      const postResult = await autoPublishArticle(token, state);
+      if (postResult.skipped) {
+        postStatus = "success";
+        postContent = state.lastPostContent || POST_CONTENT;
+        liked = state.lastPostLiked || false;
+        shared = state.lastPostShared || false;
+        deleted = state.lastPostDeleted || false;
+        sharePointsReceived = state.lastSharePointsReceived || false;
+      } else if (postResult.ok) {
+        postStatus = "success";
+        postContent = postResult.content || POST_CONTENT;
+        liked = postResult.liked || false;
+        shared = postResult.shared || false;
+        deleted = postResult.deleted || false;
+        sharePointsReceived = postResult.sharePointsReceived || false;
+        await notifyPostResult({ ok: true, content: postContent });
+        try {
+          const int3 = await fetchTotalIntegral({ token });
+          if (String(int3?.code || "") === "10000" || int3?.data != null) {
+            pointsTotal = adaptTotalIntegral(int3);
+            state.totalPoints = pointsTotal;
+            writeState(state);
+          }
+        } catch { }
+      } else {
+        postStatus = "failed";
+        postContent = POST_CONTENT;
+        await notifyPostResult({ ok: false, msg: postResult.msg || "发布失败" });
+      }
+    } catch (e) {
+      const errMsg = String(e?.message || e);
+      if (errMsg === "TOKEN_EXPIRED") {
+        console.log("🔑 Token已过期，触发更新流程...");
+        const updated = await handleTokenExpired();
+        if (updated) {
+          Script.complete();
+          return;
+        }
+      }
+      postStatus = "failed";
+      console.error("发布动态失败:", errMsg);
+    }
+  }
+
+  if (!isFinite(todayDelta) || todayDelta <= 0) {
+    if (isFinite(Number(todayAwardFromSignin)) && Number(todayAwardFromSignin) > 0) {
+      todayDelta = Number(todayAwardFromSignin);
+    } else {
+      todayDelta = Math.max(0, Number(state.totalPoints || pointsTotal) - Number(state.baselinePoints || 0));
+    }
+  }
+
+  const ride = adaptTodayRide(homeRideRaw, myRideRaw);
+  const widgets = adaptWidgets(widgetsRaw);
+  const tire = adaptTirePressure(tireRaw);
+
+  if (widgets.vehicleImageUrl && !state.vehicleImageUrl) {
+    state.vehicleImageUrl = widgets.vehicleImageUrl;
+    writeState(state);
+  }
+
+  // 调试日志：确认车辆名称
+  console.log(`🚗 车辆名称: ${state.vehicleName || widgets.vehicleName || "车辆"}`);
+
+  const data = {
+    signedToday: alreadySignedToday,
+    batteryPercent: widgets.batteryPercent,
+    residualRangeKm: widgets.residualRangeKm,
+    address: widgets.address,
+    locationTime: widgets.locationTime,
+    statusText: widgets.statusText,
+    tire,
+    vehicleImageUrl: state.vehicleImageUrl || IMAGE_URL,
+    vehicleDisplayName: state.vehicleName || widgets.vehicleName || "车辆",
+    today: ride,
+    points: {
+      total: Number(pointsTotal || state.totalPoints || 0),
+      today: todayDelta,
+      continueDays: Number(continueDays || state.continueDays || 0),
+      daysUntilLottery,
+      isBlindDay,
+      blindBoxScore: blindBoxScore || Number(state.lastBlindBoxIntegral || 0) || todayDelta,
+    },
+    postStatus: postStatus,
+    postContent: postContent || state.lastPostContent || POST_CONTENT,
+    liked: liked,
+    shared: shared,
+    deleted: deleted,
+    sharePointsReceived: sharePointsReceived, // 只用于日志，UI不显示
+  };
+  
+  console.log(`📊 最终数据: vehicleDisplayName = ${data.vehicleDisplayName}`);
+  if (data.sharePointsReceived) {
+    console.log(`✅ 分享积分已领取 (UI不显示)`);
+  }
+
+  const widget = await buildWidgetCard(data, chargeStateStr);
+  if (config.runsInWidget) {
+    Script.setWidget(widget);
+  } else {
+    await widget.presentMedium();
+  }
+
+  console.log("✅ 脚本执行完成");
+  console.log(`🔋 充电状态: ${chargeStateStr}`);
+  Script.complete();
+}
+
+const SERVER_NAME = getParam("server_name") || getParam("serverName") || "SMART";
+main();
