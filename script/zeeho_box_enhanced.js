@@ -527,6 +527,15 @@ function saveAccounts() {
 </body></html>`;
 }
 
+// ========== 响应辅助（兼容 QX / Loon / Surge） ==========
+function sendResp(status, headers, body) {
+  const isQX = typeof $task !== "undefined";
+  if (isQX) {
+    $done({ status: status, headers: headers, body: body });
+  } else {
+    $done({ response: { status: status, headers: headers, body: body } });
+  }
+}
 // ========== 主入口：重写路由 ==========
 !(async () => {
   if (typeof $request === "undefined" || !$request) {
@@ -547,7 +556,7 @@ function saveAccounts() {
   if (method === "POST" && path === "/api/save-config") {
     const body = parseBody($request);
     const ok = saveConfig(body);
-    $done({ response: { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: ok }) } });
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok }));
     return;
   }
 
@@ -556,7 +565,7 @@ function saveAccounts() {
     const body = parseBody($request);
     const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
-    $done({ response: { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: ok, count: list.length }) } });
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
     return;
   }
 
@@ -565,7 +574,7 @@ function saveAccounts() {
     const cfg = getConfig();
     const accounts = getAccounts();
     const html = renderConfig(accounts, cfg);
-    $done({ response: { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, body: html } });
+    sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
     return;
   }
 
@@ -587,7 +596,7 @@ function saveAccounts() {
   }
 
   const html = renderDashboard(accounts, data, cfg, updateTime);
-  $done({ response: { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, body: html } });
+  sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
 })();
 
 // ========== Env 类（兼容各代理工具） ==========
