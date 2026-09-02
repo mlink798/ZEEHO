@@ -51,6 +51,7 @@ $.failCount = 0;
 async function main() {
   try {
     $.log('\n================== 任务 ==================\n');
+    const commCfg = getCommunityConfig();
     for (let user of userList) {
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
@@ -74,15 +75,18 @@ async function main() {
           await $.wait(user.getRandomTime());
         }
 
-        // 互动任务：发帖 / 点赞 / 分享 各 1 分，按实际完成结果计分
+        // 互动任务：发帖 / 点赞 / 分享 各 1 分，按实际完成结果计分（受社区开关控制）
         let interactGain = 0;
+        let postId = null;
 
         // 创建动态（每日首次发帖）
-        let postId = await user.createArticle();
-        if (postId) interactGain += 1;
-        await $.wait(user.getRandomTime());
+        if (commCfg.enablePost !== false) {
+          postId = await user.createArticle();
+          if (postId) interactGain += 1;
+          await $.wait(user.getRandomTime());
+        }
         // 获取动态列表
-        postId = postId || (await user.getArticles());
+        if (!postId) postId = await user.getArticles();
         if (!postId) {
           $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: \u672a\u83b7\u53d6\u5230\u52a8\u6001ID\uff0c\u8df3\u8fc7\u4e92\u52a8\u4efb\u52a1`);
           $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: 未获取到动态ID`);
@@ -91,18 +95,25 @@ async function main() {
         }
         await $.wait(user.getRandomTime());
         // 点赞
-        if (await user.thumbsUp(postId)) interactGain += 1;
-        await $.wait(user.getRandomTime());
+        if (commCfg.enableLike !== false) {
+          if (await user.thumbsUp(postId)) interactGain += 1;
+          await $.wait(user.getRandomTime());
+        }
         // 评论（评论不加分，但分享前必须有评论）
-        await user.comment(postId);
-        await $.wait(user.getRandomTime());
+        if (commCfg.enableComment !== false) {
+          await user.comment(postId);
+          await $.wait(user.getRandomTime());
+        }
         // 分享动态
-        if (await user.share(postId)) interactGain += 1;
-        await $.wait(user.getRandomTime());
-
+        if (commCfg.enableShare !== false) {
+          if (await user.share(postId)) interactGain += 1;
+          await $.wait(user.getRandomTime());
+        }
         // 删除动态
-        await user.deletePost(postId);
-        await $.wait(user.getRandomTime());
+        if (commCfg.enableDelete !== false && postId) {
+          await user.deletePost(postId);
+          await $.wait(user.getRandomTime());
+        }
         // 查询当前积分（总分）
         const score = await user.getSignInfo();
 
@@ -113,10 +124,33 @@ async function main() {
 
         // 汇总到总通知
         $.notifyMsg.push(`「${user.userName}」积分: ${oldScore}+${gain}, 累签: ${count}天`);
+        // 写入运行日志
+        addSigninLog({
+          time: new Date().toLocaleString("zh-CN", { hour12: false }),
+          userName: user.userName,
+          userId: user.userId,
+          success: true,
+          totalGain: gain,
+          signinScore: integral || 0,
+          blindBoxScore: integralScore || 0,
+          interactScore: interactGain,
+          continueDays: count,
+          error: null,
+          steps: [`签到 +${integral || 0}`, `盲盒 +${integralScore || 0}`, `互动 +${interactGain}`, `连签 ${count}天`]
+        });
         $.successCount++;
       } else {
         // ck 失效
         $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: ck失效或请求异常`);
+        addSigninLog({
+          time: new Date().toLocaleString("zh-CN", { hour12: false }),
+          userName: user.userName || ("账号" + user.index),
+          userId: user.userId,
+          success: false,
+          totalGain: 0,
+          error: "ck失效或请求异常",
+          steps: ["执行失败: ck失效或请求异常"]
+        });
         $.failCount++;
       }
     }
@@ -580,6 +614,40 @@ async function getCookie() {
   $.setjson(userCookie, ckName);
   $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
 }
+
+// ========== 社区任务开关配置 ==========
+function getCommunityConfig() {
+  try {
+    const cfgRaw = $.getdata("zeeho_config");
+    if (cfgRaw) {
+      const cfg = JSON.parse(cfgRaw);
+      return {
+        enablePost: cfg.community?.enablePost !== false,
+        enableLike: cfg.community?.enableLike !== false,
+        enableComment: cfg.community?.enableComment !== false,
+        enableShare: cfg.community?.enableShare !== false,
+        enableDelete: cfg.community?.enableDelete !== false
+      };
+    }
+  } catch(e) {}
+  return { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true };
+}
+
+// ========== 运行日志 ==========
+function addSigninLog(entry) {
+  try {
+    const raw = $.getdata("zeeho_logs");
+    let logs = [];
+    if (raw) {
+      try { logs = JSON.parse(raw); } catch(e) { logs = []; }
+    }
+    if (!Array.isArray(logs)) logs = [];
+    logs.unshift(entry);
+    if (logs.length > 50) logs.length = 50;
+    $.setdata(JSON.stringify(logs), "zeeho_logs");
+  } catch(e) {}
+}
+
 function getSign(type, params = {}, body = '') {
   // 先读取用户在看板配置页保存的签名密钥（zeeho_config），没有则用默认值
   let appConfig = {
