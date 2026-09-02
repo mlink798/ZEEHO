@@ -377,29 +377,22 @@ async function fetchVehicleList(acc, cfg) {
   try {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
-    const headers = {
+    const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
       ...signH
-    };
-    if (acc.userId) headers["user_id"] = String(acc.userId);
-    const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", headers);
-    // 兼容多种响应格式：data 可能是数组，也可能是 { list: [...] } 或 { records: [...] }
-    let list = [];
-    if (res.code == "10000" || res.code === 10000) {
-      if (Array.isArray(res.data)) list = res.data;
-      else if (res.data && Array.isArray(res.data.list)) list = res.data.list;
-      else if (res.data && Array.isArray(res.data.records)) list = res.data.records;
-      else if (res.data && Array.isArray(res.data.rows)) list = res.data.rows;
+    });
+    if (res.code == "10000" && Array.isArray(res.data)) {
+      return res.data.map(v => ({
+        vinNo: String(v.vinNo || v.frameNo || "").trim(),
+        name: String(v.vehicleName || v.vehicleType || v.deviceName || "车辆").trim() || "车辆",
+        pic: String(v.vehiclePicUrl || "").trim(),
+        vehicleType: String(v.vehicleType || "").trim(),
+        licensePlate: v.licensePlate || null
+      })).filter(v => v.vinNo);
     }
-    return list.map(v => ({
-      vinNo: String(v.vinNo || v.frameNo || v.vin || "").trim(),
-      name: String(v.vehicleName || v.vehicleType || v.deviceName || v.name || "车辆").trim() || "车辆",
-      pic: String(v.vehiclePicUrl || v.pic || v.imageUrl || "").trim(),
-      vehicleType: String(v.vehicleType || v.type || "").trim(),
-      licensePlate: v.licensePlate || null
-    })).filter(v => v.vinNo);
+    return [];
   } catch(e) { return []; }
 }
 
@@ -411,10 +404,9 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
-      "user_id": acc.userId || "",
       ...signH
     });
-    if ((res.code == "10000" || res.code === 10000) && res.data) {
+    if (res.code == "10000" && res.data) {
       const d = res.data;
       const soc = Number(d.bmssoc || d.batteryLevel || 0);
       const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || 0);
@@ -441,11 +433,10 @@ async function fetchTirePressure(acc, cfg, vinNo) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
-      "user_id": acc.userId || "",
       ...signH
     });
-    if ((res.code == "10000" || res.code === 10000) && res.data) {
-      const list = Array.isArray(res.data.realTimeData) ? res.data.realTimeData : (Array.isArray(res.data) ? res.data : []);
+    if (res.code == "10000" && res.data) {
+      const list = Array.isArray(res.data.realTimeData) ? res.data.realTimeData : [];
       const byPos = {};
       for (const it of list) {
         const pos = Number(it?.sensorPosition);
@@ -487,10 +478,10 @@ async function fetchRideInfo(acc, cfg, vinNo) {
     const month = new Date().getFullYear() + "." + String(new Date().getMonth()+1).padStart(2,"0");
     const [homeRes, myRes] = await Promise.all([
       httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/homeRideInfo?vinNo=${encodeURIComponent(vinNo)}`, {
-        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
       }),
       httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/myRideInfo?vinNo=${encodeURIComponent(vinNo)}&month=${month}`, {
-        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
       })
     ]);
     const h = homeRes?.data || homeRes || {};
@@ -513,7 +504,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
     const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`, {
-      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
+      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
     });
     if (res.code == "10000" && res.data) {
       return String(res.data.chargeStateStr || "未充电");
@@ -532,10 +523,10 @@ async function fetchVehicleInfo(acc, cfg) {
     result.vehicleName = v.name;
     result.vehicleImageUrl = v.pic;
     const [widgets, tire, ride, charge] = await Promise.all([
-      fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
-      fetchTirePressure(acc, cfg, v.vinNo).catch(() => null),
-      fetchRideInfo(acc, cfg, v.vinNo).catch(() => null),
-      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => "未充电")
+      fetchVehicleWidgets(acc, cfg, v.vinNo),
+      fetchTirePressure(acc, cfg, v.vinNo),
+      fetchRideInfo(acc, cfg, v.vinNo),
+      fetchBatteryChargeState(acc, cfg, v.vinNo)
     ]);
     if (widgets) {
       result.batteryPercent = widgets.batteryPercent;
@@ -577,14 +568,8 @@ async function fetchAccountData(acc, cfg) {
     todayScore: 0,
     signCount: 0,
     last7: [],
-    error: null,
-    vehicle: { hasVehicle: false }
+    error: null
   };
-
-  // 0. 车辆信息（独立获取，不影响其他功能）
-  try {
-    result.vehicle = await fetchVehicleInfo(acc, cfg);
-  } catch(e) { result.vehicle = { hasVehicle: false }; }
 
   // 1. 积分
   try {
@@ -656,6 +641,11 @@ async function fetchAccountData(acc, cfg) {
     result.tokenReason = tokenCheck.reason || null;
     if (tokenCheck.valid && tokenCheck.userName) result.userName = tokenCheck.userName;
   } catch(e) { result.tokenValid = true; }
+  // 车辆信息
+  try {
+    const vehicle = await fetchVehicleInfo(acc, cfg);
+    result.vehicle = vehicle;
+  } catch(e) { result.vehicle = { hasVehicle: false }; }
   return result;
 }
 
@@ -691,6 +681,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="acc-avatar">${(a.userName || '?').charAt(0).toUpperCase()}</div>
         <div class="acc-info">
           <div class="acc-name">${a.userName}</div>
+          <div class="acc-uid num">ID ${a.userId}</div>
         </div>
         <div class="acc-badge ${a.signedToday ? 'badge-ok' : 'badge-miss'}">${a.signedToday ? '已签到' : '未签到'}</div>
         <div class="token-badge ${a.tokenValid === false ? 'token-invalid' : 'token-valid'}" title="${a.tokenValid === false ? (a.tokenReason || 'token失效') : 'token正常'}">${a.tokenValid === false ? '⚠️失效' : '✓正常'}</div>
@@ -711,7 +702,6 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="week-label">近 7 天签到</div>
         <div class="week-grid">${last7}</div>
       </div>
-      ${a.vehicle && !a.vehicle.hasVehicle ? `<div class="no-vehicle-tip">🚗 该账号未绑定车辆</div>` : ''}
       ${a.vehicle && a.vehicle.hasVehicle ? `
       <div class="vehicle-section">
         <div class="vehicle-label">
@@ -823,7 +813,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tire-icon{font-size:12px}
 .tire-temp{color:#0EA5E9;font-size:10px}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.no-vehicle-tip{margin-top:10px;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:11px;color:#B45309;text-align:center}
 .footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;margin-top:10px}
 .footer a{color:#0891B2;text-decoration:none}
 .empty-state{text-align:center;padding:60px 20px;color:#94A3B8}
@@ -1037,9 +1026,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   <!-- 签名配置 -->
   <div class="panel">
-    <div class="panel-head">
-      <div class="panel-title"><span class="bar"></span>签名密钥配置</div>
-    </div>
+    <div class="panel-head"><div class="panel-title"><span class="bar"></span>签名密钥配置</div></div>
     <div class="panel-body">
       <div class="form-grid">
         <div class="form-item"><label>App端 appId</label><input type="text" id="cfg_app_id" value="${cfg.app.appId}"></div>
@@ -1153,7 +1140,7 @@ function saveAccounts() {
   });
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('账号已保存'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
+    .then(function(d){ if(d.ok){ showToast('账号已保存（'+list.length+'个）'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 </script>
