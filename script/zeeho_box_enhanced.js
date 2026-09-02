@@ -36,11 +36,13 @@ const $ = new Env("极核看板增强版");
 // ========== 存储键名 ==========
 const CK_CONFIG = "zeeho_config";
 const CK_DATA = "zeeho_data";
+const CK_LOGS = "zeeho_logs";
 
 // ========== 默认配置 ==========
 const DEFAULT_CONFIG = {
   app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
-  h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" }
+  h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" },
+  community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true }
 };
 
 // ========== 配置读写 ==========
@@ -51,7 +53,8 @@ function getConfig() {
       const c = JSON.parse(raw);
       return {
         app: { appId: c.app?.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || DEFAULT_CONFIG.app.appSecret },
-        h5:  { appId: c.h5?.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || DEFAULT_CONFIG.h5.appSecret }
+        h5:  { appId: c.h5?.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || DEFAULT_CONFIG.h5.appSecret },
+        community: { enablePost: c.community?.enablePost !== false, enableLike: c.community?.enableLike !== false, enableComment: c.community?.enableComment !== false, enableShare: c.community?.enableShare !== false, enableDelete: c.community?.enableDelete !== false }
       };
     }
   } catch(e) {}
@@ -75,6 +78,30 @@ function getAccounts() {
 function saveAccounts(list) {
   try { $.setdata(JSON.stringify(list), CK_DATA); return true; } catch(e) { return false; }
 }
+// ========== 运行日志 ==========
+function getLogs() {
+  try {
+    const raw = $.getdata(CK_LOGS);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    }
+  } catch(e) {}
+  return [];
+}
+function addLog(entry) {
+  try {
+    const logs = getLogs();
+    logs.unshift(entry);
+    if (logs.length > 50) logs.length = 50;
+    $.setdata(JSON.stringify(logs), CK_LOGS);
+    return true;
+  } catch(e) { return false; }
+}
+function clearLogs() {
+  try { $.setdata("[]", CK_LOGS); return true; } catch(e) { return false; }
+}
+
 
 // ========== 工具函数 ==========
 function getUuid() {
@@ -137,6 +164,211 @@ function httpGet(url, headers) {
       });
     }
   });
+}
+
+
+// ========== Token 状态检测 ==========
+async function checkToken(acc, cfg) {
+  try {
+    const token = cleanToken(acc.token);
+    const userId = acc.userId || "";
+    const signH = getSign("app", {}, '', cfg);
+    const res = await httpGet(
+      `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`,
+      {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json;charset=UTF-8",
+        "interfaceversion": "2",
+        ...signH
+      }
+    );
+    if (res.code == "10000" && res.data) {
+      return { valid: true, score: Number(res.data.score) || 0, userName: res.data.nickName || acc.userName };
+    }
+    if (res.code == "40001" || res.code == 401) {
+      return { valid: false, reason: "token已过期" };
+    }
+    return { valid: false, reason: res.message || "请求异常" };
+  } catch(e) {
+    return { valid: false, reason: String(e) };
+  }
+}
+
+// ========== 手动执行签到（单账号） ==========
+async function runSigninForAccount(acc, cfg) {
+  const result = { userName: acc.userName || "未知", userId: acc.userId, success: false, signinScore: 0, blindBoxScore: 0, interactScore: 0, totalGain: 0, continueDays: 0, error: null, steps: [] };
+  try {
+    const token = cleanToken(acc.token);
+    const userId = acc.userId || "";
+    const baseHeaders = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      "user_id": userId
+    };
+    const today = new Date().getFullYear() + "-" + String(new Date().getMonth()+1).padStart(2,"0") + "-" + String(new Date().getDate()).padStart(2,"0");
+    const month = today.slice(0,7);
+
+    // 1. 签到
+    try {
+      const infoRes = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...getSign("h5", { month }, '', cfg) });
+      const todayEntry = (infoRes?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+      if (todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5)) {
+        result.steps.push("今日已签到");
+      } else {
+        const signRes = await httpPost(`https://h5.zeehoev.com/cfmotoservermine/signin`, { ...baseHeaders, ...getSign("h5", {}, '', cfg) }, {});
+        if (signRes?.code == "10000") {
+          const infoRes2 = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...getSign("h5", { month }, '', cfg) });
+          const te = (infoRes2?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+          result.signinScore = te ? (Number(te.integralScore) || 0) : 0;
+          result.steps.push(`签到成功 +${result.signinScore}`);
+        } else {
+          result.steps.push(`签到失败: ${signRes?.message || "未知"}`);
+        }
+      }
+    } catch(e) { result.steps.push(`签到异常: ${e}`); }
+
+    // 2. 查询连签和盲盒
+    try {
+      const infoRes = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...getSign("h5", { month }, '', cfg) });
+      const list = infoRes?.data?.nowSignDetailVos || [];
+      const todayIdx = list.findIndex(x => x.createDate === today);
+      let cont = 0;
+      for (let i = todayIdx; i >= 0; i--) { if (list[i]?.signStatue == 3 || list[i]?.signStatue == 5) cont++; else break; }
+      result.continueDays = cont;
+      const signCount = Number(infoRes?.data?.signCount) || 0;
+      if (signCount >= 30) {
+        const blindRes = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/supplementPrize?supplementDate=${today}`, { ...baseHeaders, ...getSign("h5", { supplementDate: today }, '', cfg) });
+        if (blindRes?.code == "10000") {
+          result.blindBoxScore = Number(blindRes?.data?.integral || blindRes?.data?.integralScore || 0);
+          result.steps.push(`盲盒获得 +${result.blindBoxScore} (${blindRes?.data?.prizesName || "积分"})`);
+        }
+      } else {
+        result.steps.push(`盲盒未解锁(${signCount}/30)`);
+      }
+    } catch(e) { result.steps.push(`盲盒异常: ${e}`); }
+
+    // 3. 社区任务（根据配置开关）
+    const comm = cfg.community || {};
+    let postId = null;
+    if (comm.enablePost !== false) {
+      try {
+        const postRes = await httpPost(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle`, { ...baseHeaders, ...getSign("app", {}, '', cfg) }, { postcontent: "开心的一天" });
+        if (postRes?.code == "10000") {
+          postId = getPostIdFromData(postRes.data);
+          result.interactScore += 1;
+          result.steps.push("发帖成功 +1");
+        }
+      } catch(e) { result.steps.push(`发帖异常: ${e}`); }
+    }
+    if (!postId) {
+      try {
+        const listRes = await httpGet(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/mineArticleInfo?userId=${userId}&page=1&pageSize=10`, { ...baseHeaders, ...getSign("app", {}, '', cfg) });
+        const list = Array.isArray(listRes?.data) ? listRes.data : (listRes?.data?.records || listRes?.data?.list || []);
+        postId = getPostIdFromData(list[0] || listRes?.data);
+      } catch(e) {}
+    }
+    if (postId) {
+      if (comm.enableLike !== false) {
+        try {
+          const likeRes = await httpPost(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/socialCommu/likeFavoriteInfo`, { ...baseHeaders, ...getSign("app", {}, '', cfg) }, { postId: String(postId), kindFlag: "0" });
+          if (likeRes?.code == "10000") { result.interactScore += 1; result.steps.push("点赞成功 +1"); }
+        } catch(e) { result.steps.push(`点赞异常: ${e}`); }
+      }
+      if (comm.enableComment !== false) {
+        try {
+          await httpPost(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commentInfo`, { ...baseHeaders, ...getSign("app", {}, '', cfg) }, { postid: String(postId), userId: String(userId), comments: "厉害", sendTos: "[\n\n]" });
+          result.steps.push("评论完成");
+        } catch(e) { result.steps.push(`评论异常: ${e}`); }
+      }
+      if (comm.enableShare !== false) {
+        try {
+          const shareRes = await httpPut(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/article/share/${postId}`, { ...baseHeaders, ...getSign("app", {}, '', cfg) });
+          if (shareRes?.code == "10000") { result.interactScore += 1; result.steps.push("分享成功 +1"); }
+          await httpGet(`https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/adjustByShare`, { ...baseHeaders, ...getSign("app", {}, '', cfg) });
+        } catch(e) { result.steps.push(`分享异常: ${e}`); }
+      }
+      if (comm.enableDelete !== false && postId) {
+        try {
+          await httpDelete(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle/deleteArticle?articleId=${postId}&postType=1`, { ...baseHeaders, ...getSign("app", {}, '', cfg) });
+          result.steps.push("动态已删除");
+        } catch(e) { result.steps.push(`删除异常: ${e}`); }
+      }
+    }
+
+    result.totalGain = result.signinScore + result.blindBoxScore + result.interactScore;
+    result.success = true;
+  } catch(e) {
+    result.error = String(e);
+    result.steps.push(`执行异常: ${e}`);
+  }
+  return result;
+}
+
+// ========== 辅助：HTTP POST/PUT/DELETE ==========
+function httpPost(url, headers, body) {
+  return new Promise((resolve) => {
+    const isQX = typeof $task !== "undefined";
+    const opts = { url, headers, method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) };
+    if (isQX) {
+      $task.fetch(opts).then(
+        function(resp) { try { resolve(JSON.parse(resp.body)); } catch(e) { resolve({ error: "parse error", raw: resp.body }); } },
+        function(err) { resolve({ error: String(err && err.error || err || "request failed") }); }
+      );
+    } else {
+      $httpClient.post(opts, function(err, resp, body) {
+        if (err) { resolve({ error: String(err) }); return; }
+        try { resolve(JSON.parse(body)); } catch(e) { resolve({ error: "parse error", raw: body }); }
+      });
+    }
+  });
+}
+function httpPut(url, headers) {
+  return new Promise((resolve) => {
+    const isQX = typeof $task !== "undefined";
+    const opts = { url, headers, method: "PUT" };
+    if (isQX) {
+      $task.fetch(opts).then(
+        function(resp) { try { resolve(JSON.parse(resp.body)); } catch(e) { resolve({ error: "parse error", raw: resp.body }); } },
+        function(err) { resolve({ error: String(err && err.error || err || "request failed") }); }
+      );
+    } else {
+      $httpClient.put(opts, function(err, resp, body) {
+        if (err) { resolve({ error: String(err) }); return; }
+        try { resolve(JSON.parse(body)); } catch(e) { resolve({ error: "parse error", raw: body }); }
+      });
+    }
+  });
+}
+function httpDelete(url, headers) {
+  return new Promise((resolve) => {
+    const isQX = typeof $task !== "undefined";
+    const opts = { url, headers, method: "DELETE" };
+    if (isQX) {
+      $task.fetch(opts).then(
+        function(resp) { try { resolve(JSON.parse(resp.body)); } catch(e) { resolve({ error: "parse error", raw: resp.body }); } },
+        function(err) { resolve({ error: String(err && err.error || err || "request failed") }); }
+      );
+    } else {
+      $httpClient.delete(opts, function(err, resp, body) {
+        if (err) { resolve({ error: String(err) }); return; }
+        try { resolve(JSON.parse(body)); } catch(e) { resolve({ error: "parse error", raw: body }); }
+      });
+    }
+  });
+}
+function getPostIdFromData(data) {
+  if (!data) return null;
+  if (typeof data === "string" || typeof data === "number") return String(data);
+  if (Array.isArray(data)) return getPostIdFromData(data[0]);
+  const direct = data.uuid || data.tuuid || data.postId || data.postid || data.articleId || data.articleID || data.id || data.dataId || data.tid;
+  if (direct) return String(direct);
+  for (const key of ["records", "list", "rows", "data", "result"]) {
+    const v = data[key];
+    const pid = getPostIdFromData(v);
+    if (pid) return pid;
+  }
+  return null;
 }
 
 // ========== 获取单账号实时数据 ==========
@@ -221,6 +453,13 @@ async function fetchAccountData(acc, cfg) {
     }
   } catch(e) { if (!result.error) result.error = "签到状态获取失败"; }
 
+  // Token 状态检测
+  try {
+    const tokenCheck = await checkToken(acc, cfg);
+    result.tokenValid = tokenCheck.valid;
+    result.tokenReason = tokenCheck.reason || null;
+    if (tokenCheck.valid && tokenCheck.userName) result.userName = tokenCheck.userName;
+  } catch(e) { result.tokenValid = true; }
   return result;
 }
 
@@ -259,6 +498,8 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <div class="acc-uid num">ID ${a.userId}</div>
         </div>
         <div class="acc-badge ${a.signedToday ? 'badge-ok' : 'badge-miss'}">${a.signedToday ? '已签到' : '未签到'}</div>
+        <div class="token-badge ${a.tokenValid === false ? 'token-invalid' : 'token-valid'}" title="${a.tokenValid === false ? (a.tokenReason || 'token失效') : 'token正常'}">${a.tokenValid === false ? '⚠️失效' : '✓正常'}</div>
+      <button class="acc-signin-btn" onclick="runSignin('${a.userId}')" title="立即签到此账号">签到</button>
       </div>
       ${a.error ? `<div class="acc-err-msg">${a.error}</div>` : ''}
       <div class="acc-kpi">
@@ -343,17 +584,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .empty-state p{font-size:14px;margin-bottom:6px}
 .empty-state .hint{font-size:12px;opacity:.7}
 .config-info{font-size:10px;color:#94A3B8;margin-top:8px;text-align:center}
+.token-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:8px;flex-shrink:0;margin-left:6px}
+.token-valid{background:#D1FAE5;color:#065F46}
+.token-invalid{background:#FEE2E2;color:#991B1B}
+.acc-signin-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #0891B2;background:#fff;color:#0891B2;cursor:pointer;flex-shrink:0;margin-left:6px;font-family:inherit}
+.acc-signin-btn:hover{background:#0891B2;color:#fff}
+.log-item{padding:10px 12px;border-bottom:1px solid #F1F5F9;font-size:12px}
+.log-item:last-child{border-bottom:none}
+.log-time{color:#94A3B8;font-size:11px;margin-bottom:2px}
+.log-user{font-weight:700;color:#0F172A;margin-right:8px}
+.log-result{color:#10B981;font-weight:600}
+.log-result.err{color:#DC2626}
+.log-steps{color:#64748B;margin-top:4px;font-size:11px;line-height:1.6}
 @media(max-width:640px){.summary-row{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.acc-kpi{grid-template-columns:repeat(2,1fr)}.topbar{padding:12px 14px}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
   <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
   <div class="top-actions">
     <div class="stat-chip"><span class="dot"></span><span id="signedInfo">${signedCount}/${data.length} 已签到</span></div>
+    <button class="nav-btn" onclick="switchTab('dashboard')">数据</button>
+    <button class="nav-btn" onclick="switchTab('logs')">日志</button>
     <a href="/config" class="nav-btn">配置</a>
-    <button class="nav-btn primary" onclick="location.reload()">刷新</button>
+    <button class="nav-btn primary" onclick="runAllSignin()">立即签到</button>
+    <button class="nav-btn" onclick="location.reload()">刷新</button>
   </div>
 </div>
-<div class="container">
+<div class="container" id="dashboardPage">
   ${data.length === 0 ? `
   <div class="empty-state">
     <p>未找到极核账号</p>
@@ -369,7 +625,96 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   <div class="config-info">App端 appId: ${cfg.app.appId} · H5端 appId: ${cfg.h5.appId} · 可在「配置」页修改</div>
   `}
 </div>
+<!-- 运行日志页面 -->
+<div id="logsPage" style="display:none">
+  <div class="panel" style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:16px;overflow:hidden">
+    <div class="panel-head" style="padding:14px 18px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between">
+      <div class="panel-title" style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px"><span class="bar" style="width:3px;height:14px;border-radius:2px;background:#8B5CF6"></span>运行日志（最近50条）</div>
+      <button class="nav-btn" onclick="clearLogs()" style="padding:5px 12px;font-size:11px">清空日志</button>
+    </div>
+    <div id="logsList" style="padding:14px 18px;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- 签到结果弹窗 -->
+<div id="signinModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:700">签到执行结果</h3>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94A3B8">×</button>
+    </div>
+    <div id="signinResult"></div>
+  </div>
+</div>
+
 <div class="footer">极核 ZEEHO 签到看板 · 作者 <a href="https://github.com/mlink798">lucky</a> · 数据来自代理工具实时 API</div>
+<script>
+function switchTab(tab) {
+  document.getElementById('dashboardPage').style.display = tab === 'dashboard' ? 'block' : 'none';
+  document.getElementById('logsPage').style.display = tab === 'logs' ? 'block' : 'none';
+  if (tab === 'logs') loadLogs();
+}
+function loadLogs() {
+  fetch('/api/get-logs').then(function(r){return r.json()}).then(function(d){
+    var list = document.getElementById('logsList');
+    if (!d.logs || d.logs.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">暂无运行日志</div>';
+      return;
+    }
+    list.innerHTML = d.logs.map(function(log){
+      var steps = log.steps ? log.steps.map(function(s){return '<div>· '+s+'</div>'}).join('') : '';
+      return '<div class="log-item"><div class="log-time">'+log.time+'</div><div><span class="log-user">'+log.userName+'</span><span class="log-result '+(log.success?'':'err')+'">'+(log.success?('成功 +'+log.totalGain):('失败: '+(log.error||'未知')))+'</span></div>'+(steps?'<div class="log-steps">'+steps+'</div>':'')+'</div>';
+    }).join('');
+  }).catch(function(){document.getElementById('logsList').innerHTML='<div style="text-align:center;padding:40px;color:#DC2626">加载失败</div>'});
+}
+function clearLogs() {
+  if (!confirm('确定清空所有运行日志？')) return;
+  fetch('/api/clear-logs',{method:'POST'}).then(function(r){return r.json()}).then(function(d){
+    if (d.ok) { loadLogs(); showToast('日志已清空'); }
+  });
+}
+function runAllSignin() {
+  if (!confirm('确定立即执行所有账号签到？')) return;
+  showToast('正在执行签到...');
+  fetch('/api/run-signin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})})
+    .then(function(r){return r.json()})
+    .then(function(d){ showSigninResult(d); })
+    .catch(function(){ showToast('执行失败','err'); });
+}
+function runSignin(userId) {
+  showToast('正在签到...');
+  fetch('/api/run-signin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:userId})})
+    .then(function(r){return r.json()})
+    .then(function(d){ showSigninResult(d); })
+    .catch(function(){ showToast('执行失败','err'); });
+}
+function showSigninResult(d) {
+  var modal = document.getElementById('signinModal');
+  var result = document.getElementById('signinResult');
+  modal.style.display = 'flex';
+  var html = '';
+  if (d.results && d.results.length > 0) {
+    html = d.results.map(function(r){
+      var steps = r.steps ? r.steps.map(function(s){return '<div style="color:#64748B;font-size:12px;margin:2px 0">· '+s+'</div>'}).join('') : '';
+      return '<div style="padding:12px;border:1px solid '+(r.success?'#D1FAE5':'#FEE2E2')+';border-radius:10px;margin-bottom:10px;background:'+(r.success?'#F0FDF4':'#FEF2F2')+'"><div style="font-weight:700;font-size:14px;margin-bottom:4px">'+r.userName+' <span style="color:'+(r.success?'#10B981':'#DC2626')+';font-size:12px">'+(r.success?('成功 +'+r.totalGain):'失败')+'</span></div>'+(r.error?'<div style="color:#DC2626;font-size:12px">'+r.error+'</div>':'')+steps+'</div>';
+    }).join('');
+  } else {
+    html = '<div style="text-align:center;color:#94A3B8;padding:20px">无结果</div>';
+  }
+  result.innerHTML = html;
+  setTimeout(function(){ location.reload(); }, 3000);
+}
+function closeModal() {
+  document.getElementById('signinModal').style.display = 'none';
+}
+function showToast(msg, type) {
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:10000;'+(type==='err'?'background:#EF4444;color:#fff':'background:#10B981;color:#fff');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2000);
+}
+</script>
 </body></html>`;
 }
 
@@ -417,6 +762,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .form-item input,.form-item select{width:100%;padding:9px 11px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#FAFBFC}
 .form-item input:focus{border-color:#0891B2;box-shadow:0 0 0 3px #E0F7FB}
 .form-item.full{grid-column:1/-1}
+.switch-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#334155;padding:8px 0}
+.switch-label input[type="checkbox"]{width:18px;height:18px;accent-color:#0891B2;cursor:pointer}
 .btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;transition:all .15s;font-family:inherit}
 .btn:hover{background:#F1F5F9}
 .btn-primary{background:#0891B2;color:#fff;border-color:#0891B2}
@@ -460,6 +807,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     </div>
   </div>
 
+  <!-- 社区任务开关 -->
+  <div class="panel">
+    <div class="panel-head"><div class="panel-title"><span class="bar" style="background:#F59E0B"></span>社区任务开关</div></div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div class="form-item"><label class="switch-label"><input type="checkbox" id="comm_post" ${cfg.community?.enablePost !== false ? "checked" : ""}> 发布动态（+1分）</label></div>
+        <div class="form-item"><label class="switch-label"><input type="checkbox" id="comm_like" ${cfg.community?.enableLike !== false ? "checked" : ""}> 点赞动态（+1分）</label></div>
+        <div class="form-item"><label class="switch-label"><input type="checkbox" id="comm_comment" ${cfg.community?.enableComment !== false ? "checked" : ""}> 评论动态（不加分）</label></div>
+        <div class="form-item"><label class="switch-label"><input type="checkbox" id="comm_share" ${cfg.community?.enableShare !== false ? "checked" : ""}> 分享动态（+1分）</label></div>
+        <div class="form-item"><label class="switch-label"><input type="checkbox" id="comm_delete" ${cfg.community?.enableDelete !== false ? "checked" : ""}> 执行后删除动态</label></div>
+      </div>
+      <div class="hint">关闭对应开关后，签到脚本将跳过该任务。修改后点击下方「保存配置」生效。</div>
+    </div>
+  </div>
+
   <!-- 账号管理 -->
   <div class="panel">
     <div class="panel-head">
@@ -487,7 +849,14 @@ function showToast(msg, type) {
 function saveConfig() {
   var data = {
     app: { appId: document.getElementById('cfg_app_id').value, appSecret: document.getElementById('cfg_app_secret').value },
-    h5: { appId: document.getElementById('cfg_h5_id').value, appSecret: document.getElementById('cfg_h5_secret').value }
+    h5: { appId: document.getElementById('cfg_h5_id').value, appSecret: document.getElementById('cfg_h5_secret').value },
+    community: {
+      enablePost: document.getElementById('comm_post').checked,
+      enableLike: document.getElementById('comm_like').checked,
+      enableComment: document.getElementById('comm_comment').checked,
+      enableShare: document.getElementById('comm_share').checked,
+      enableDelete: document.getElementById('comm_delete').checked
+    }
   };
   fetch('/api/save-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) })
     .then(function(r){ return r.json(); })
@@ -499,6 +868,11 @@ function resetConfig() {
   document.getElementById('cfg_app_secret').value = 'c5e0da7f4da28df805694ec3dd1fc6792e9df99d';
   document.getElementById('cfg_h5_id').value = 'Sw5F9uJi';
   document.getElementById('cfg_h5_secret').value = '46870a8f678a09109468f5b0168818b91c292845';
+  document.getElementById('comm_post').checked = true;
+  document.getElementById('comm_like').checked = true;
+  document.getElementById('comm_comment').checked = true;
+  document.getElementById('comm_share').checked = true;
+  document.getElementById('comm_delete').checked = true;
   showToast('已恢复默认（需点击保存）');
 }
 var accCount = ${accounts.length};
@@ -577,6 +951,49 @@ function sendResp(status, headers, body) {
     const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
+    return;
+  }
+
+  // API: 获取运行日志
+  if (method === "GET" && path === "/api/get-logs") {
+    const logs = getLogs();
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ logs: logs }));
+    return;
+  }
+
+  // API: 清空运行日志
+  if (method === "POST" && path === "/api/clear-logs") {
+    const ok = clearLogs();
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok }));
+    return;
+  }
+
+  // API: 手动执行签到
+  if (method === "POST" && path === "/api/run-signin") {
+    const body = parseBody($request);
+    const cfg = getConfig();
+    const accounts = getAccounts();
+    const results = [];
+    const targets = body.all ? accounts : accounts.filter(a => String(a.userId) === String(body.userId));
+    for (const acc of targets) {
+      const r = await runSigninForAccount(acc, cfg);
+      results.push(r);
+      // 写入日志
+      addLog({
+        time: new Date().toLocaleString("zh-CN", { hour12: false }),
+        userName: r.userName,
+        userId: r.userId,
+        success: r.success,
+        totalGain: r.totalGain,
+        signinScore: r.signinScore,
+        blindBoxScore: r.blindBoxScore,
+        interactScore: r.interactScore,
+        continueDays: r.continueDays,
+        error: r.error,
+        steps: r.steps
+      });
+    }
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, results: results }));
     return;
   }
 
