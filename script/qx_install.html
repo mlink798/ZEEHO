@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>极核 ZEEHO — QX 一键导入</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#F1F5F9;color:#0F172A;min-height:100vh;padding:20px}
+  .container{max-width:480px;margin:0 auto}
+  .header{text-align:center;padding:30px 0 20px}
+  .logo{width:64px;height:64px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:28px;font-weight:900;margin-bottom:12px}
+  .header h1{font-size:20px;font-weight:700;margin-bottom:4px}
+  .header p{font-size:13px;color:#64748B}
+  .card{background:#fff;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .card h2{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .card h2 .num{width:24px;height:24px;background:#0891B2;color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+  .url-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;font-size:12px;color:#475569;word-break:break-all;margin-bottom:10px;line-height:1.5}
+  .btn{display:block;width:100%;padding:13px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;transition:opacity .2s}
+  .btn:active{opacity:.7}
+  .btn-primary{background:#0891B2;color:#fff}
+  .btn-secondary{background:#F1F5F9;color:#0F172A;border:1px solid #E2E8F0}
+  .btn-group{display:flex;gap:10px}
+  .btn-group .btn{flex:1}
+  .steps{list-style:none}
+  .steps li{font-size:13px;color:#475569;padding:8px 0;padding-left:24px;position:relative;line-height:1.6}
+  .steps li::before{content:'';position:absolute;left:6px;top:14px;width:8px;height:8px;background:#0891B2;border-radius:50%}
+  .steps li strong{color:#0F172A}
+  .tip{background:#FEF3C7;border-left:3px solid #F59E0B;padding:10px 12px;border-radius:0 8px 8px 0;font-size:12px;color:#92400E;line-height:1.6;margin-top:10px}
+  .task-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;font-size:12px;color:#475569;word-break:break-all;margin-bottom:10px;line-height:1.5;font-family:monospace}
+  .footer{text-align:center;padding:20px 0;font-size:11px;color:#94A3B8}
+  .success{background:#D1FAE5;color:#065F46;padding:10px;border-radius:8px;font-size:13px;text-align:center;margin-top:10px;display:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">Z</div>
+    <h1>极核 ZEEHO 签到</h1>
+    <p>Quantumult X 一键导入引导</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">1</span>导入远程重写规则</h2>
+    <div class="url-box" id="rewriteUrl">https://raw.githubusercontent.com/mlink798/ZEEHO/main/script/zeeho_qx_rewrite.conf</div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="copyUrl('rewriteUrl',this)">复制链接</button>
+      <a class="btn btn-secondary" href="quantumult-x:///add-resource?type=rewrite_remote&url=https%3A%2F%2Fraw.githubusercontent.com%2Fmlink798%2FZEEHO%2Fmain%2Fscript%2Fzeeho_qx_rewrite.conf&tag=%E6%9E%81%E6%A0%B8%E7%AD%BE%E5%88%B0">一键导入</a>
+    </div>
+    <div class="success" id="success1">已复制到剪贴板</div>
+    <div class="tip">
+      <strong>手动导入步骤：</strong><br>
+      QX → 右下角风车 → 重写 → 规则资源 → 右上角 + → 粘贴链接 → 标签填「极核签到」→ 保存
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">2</span>添加每日签到定时任务</h2>
+    <div class="task-box" id="taskText">0 7 * * * https://raw.githubusercontent.com/mlink798/ZEEHO/main/script/zeeho.js, tag=极核签到, img-url=https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png, enabled=true</div>
+    <button class="btn btn-primary" onclick="copyText('taskText',this)">复制任务代码</button>
+    <div class="success" id="success2">已复制到剪贴板</div>
+    <div class="tip">
+      <strong>添加步骤：</strong><br>
+      QX → 右下角风车 → 任务 → 右上角 + → 粘贴代码 → 保存<br>
+      每天早上 7:00 自动执行签到
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">3</span>确认 MITM 已开启</h2>
+    <ul class="steps">
+      <li>QX → 右下角风车 → <strong>MitM</strong></li>
+      <li>确认 <strong>hostname</strong> 包含：<code>tapi.zeehoev.com, zeeho.box</code></li>
+      <li>确认证书已安装并在系统设置中<strong>信任</strong></li>
+      <li>开启 <strong>重写</strong> 和 <strong>MitM</strong> 总开关</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">4</span>开始使用</h2>
+    <ul class="steps">
+      <li>打开<strong>极核 App</strong> → 进入「我的」页面，自动抓取 Token</li>
+      <li>浏览器访问 <strong>http://zeeho.box</strong> 查看看板</li>
+      <li>访问 <strong>http://zeeho.box/config</strong> 修改配置</li>
+      <li>每天 7:00 自动签到，推送结果通知</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    极核 ZEEHO 签到脚本 · Quantumult X 版<br>
+    仓库：github.com/mlink798/ZEEHO
+  </div>
+</div>
+
+<script>
+function copyUrl(id, btn){
+  const text = document.getElementById(id).textContent;
+  copyText(text, btn, 'success1');
+}
+function copyText(id, btn, successId){
+  const text = typeof id === 'string' ? document.getElementById(id).textContent : id;
+  const sid = successId || 'success2';
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>showSuccess(btn, sid));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showSuccess(btn, sid);
+  }
+}
+function showSuccess(btn, id){
+  const el = document.getElementById(id);
+  if(el){
+    el.style.display = 'block';
+    setTimeout(()=>el.style.display='none', 2000);
+  }
+  const old = btn.textContent;
+  btn.textContent = '已复制 ✓';
+  setTimeout(()=>btn.textContent = old, 2000);
+}
+</script>
+</body>
+</html>
