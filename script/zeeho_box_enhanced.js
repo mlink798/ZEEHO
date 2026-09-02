@@ -4,7 +4,7 @@
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
-图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
+图标: https://github.com/mlink798/ZEEHO/blob/main/ZEEHO.png
 
 [Script]
 # 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
