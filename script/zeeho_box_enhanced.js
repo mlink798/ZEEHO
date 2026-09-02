@@ -1,23 +1,18 @@
 /*
-#!name=极核 ZEEHO 签到面板
-#!desc=多账号实时数据面板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
+#!name=极核 每日签到 积分任务
+#!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到并推送 iOS 通知。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!homepage=https://github.com/mlink798/ZEEHO
-
-图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
+图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
 [Script]
-# 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
-http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
-
-# 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
+# 获取 Cookie
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
 
-# 定时签到：每天早上7点自动签到+盲盒+社区任务
+# 脚本任务
 cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
 
 [MITM]
-hostname = tapi.zeehoev.com, zeeho.box
+hostname = tapi.zeehoev.com
 
 ====================================
 ⚠️【免责声明】
@@ -31,584 +26,711 @@ hostname = tapi.zeehoev.com, zeeho.box
 7、所有直接或间接使用、查看此脚本的人均应该仔细阅读此声明。本人保留随时更改或补充此声明的权利。一旦您使用或复制了此脚本，即视为您已接受此免责声明。
  */
 
-const $ = new Env("极核看板增强版");
+// env.js 全局
+const $ = new Env("极核-ZEEHO");
+const ckName = "zeeho_data";
+//-------------------- 一般不动变量区域 -------------------------------------
+const Notify = 1;//0为关闭通知,1为打开通知,默认为1
+const notify = $.isNode() ? require('./sendNotify') : '';
+let envSplitor = ["@"]; //多账号分隔符
+var userCookie = ($.isNode() ? process.env[ckName] : $.getdata(ckName)) || '';
+let userList = [];
+let userIdx = 0;
+let userCount = 0;
 
-// ========== 存储键名 ==========
-const CK_CONFIG = "zeeho_config";
-const CK_DATA = "zeeho_data";
+// 调试
+$.is_debug = ($.isNode() ? process.env.IS_DEDUG : $.getdata('is_debug')) || 'false';
+// 为通知准备的空数组（改为全局汇总）
+$.notifyMsg = [];
+// 统计成功/失败账号数
+$.successCount = 0;
+$.failCount = 0;
 
-// ========== 默认配置 ==========
-const DEFAULT_CONFIG = {
-  app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
-  h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" }
-};
-
-// ========== 配置读写 ==========
-function getConfig() {
+//---------------------- 自定义变量区域 -----------------------------------
+//脚本入口函数main()
+async function main() {
   try {
-    const raw = $.getdata(CK_CONFIG);
-    if (raw) {
-      const c = JSON.parse(raw);
-      return {
-        app: { appId: c.app?.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || DEFAULT_CONFIG.app.appSecret },
-        h5:  { appId: c.h5?.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || DEFAULT_CONFIG.h5.appSecret }
-      };
-    }
-  } catch(e) {}
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-}
-function saveConfig(cfg) {
-  try { $.setdata(JSON.stringify(cfg), CK_CONFIG); return true; } catch(e) { return false; }
-}
+    $.log('\n================== 任务 ==================\n');
+    for (let user of userList) {
+      console.log(`🔷账号${user.index} >> Start work`)
+      console.log(`随机延迟${user.getRandomTime()}ms`);
+      // 签到
+      const integral = (await user.signin()) || 0;
+      let integralScore = 0;
+      if (user.ckStatus) {
+        await $.wait(user.getRandomTime());
+        // 查看签到记录
+        const {
+          count = 0,
+          prize = 0,
+          prizes = 0
+        } = (await user.getSignRecord()) || {};
 
-// ========== 账号读写 ==========
-function getAccounts() {
-  try {
-    const raw = $.getdata(CK_DATA);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : [arr];
-    }
-  } catch(e) {}
-  return [];
-}
-function saveAccounts(list) {
-  try { $.setdata(JSON.stringify(list), CK_DATA); return true; } catch(e) { return false; }
-}
+        await $.wait(user.getRandomTime());
 
-// ========== 工具函数 ==========
-function getUuid() {
-  const p = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx", c = "abcdef0123456789";
-  let r = "";
-  for (const ch of p) {
-    if (ch === "x" || ch === "y") {
-      const n = Math.floor(Math.random() * 16);
-      r += (ch === "y" ? (n & 0x3) | 0x8 : n).toString(16);
-    } else r += ch;
-  }
-  return r;
-}
-function getRandomChars(n = 16) {
-  const c = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  let r = ""; for (let i = 0; i < n; i++) r += c.charAt(Math.floor(Math.random() * c.length)); return r;
-}
-function toQuery(p = {}) {
-  return Object.keys(p).filter(k => p[k] !== undefined && p[k] !== null).sort()
-    .map(k => `${k}=${p[k]}`).join("&");
-}
-function cleanToken(t) {
-  return String(t || "").replace(/^[bB]earer\s+/i, "").trim();
-}
+        if (prizes >= 30) {
+          // 盲盒抽奖
+          integralScore = await user.lottery();
+          await $.wait(user.getRandomTime());
+        }
 
-// ========== md5 / sha1 ==========
-function md5(t,e){function n(t,e){return t<<e|t>>>32-e}function r(t,e){var n,r,o,i,a;return o=2147483648&t,i=2147483648&e,a=(1073741823&t)+(1073741823&e),(n=1073741824&t)&(r=1073741824&e)?2147483648^a^o^i:n|r?1073741824&a?3221225472^a^o^i:1073741824^a^o^i:a^o^i}function o(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t&e|~t&n}(e,o,i),a),c)),r(n(t,u),e)}function i(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t&n|e&~n}(e,o,i),a),c)),r(n(t,u),e)}function a(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t^e^n}(e,o,i),a),c)),r(n(t,u),e)}function u(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return e^(t|~n)}(e,o,i),a),c)),r(n(t,u),e)}function c(t){var e,n="",r="";for(e=0;e<=3;e++)n+=(r="0"+(t>>>8*e&255).toString(16)).substr(r.length-2,2);return n}var s,l,f,p,d,h,v,y,g,m=Array();for(m=function(t){for(var e,n=t.length,r=n+8,o=16*((r-r%64)/64+1),i=Array(o-1),a=0,u=0;u<n;)a=u%4*8,i[e=(u-u%4)/4]=i[e]|t.charCodeAt(u)<<a,u++;return a=u%4*8,i[e=(u-u%4)/4]=i[e]|128<<a,i[o-2]=n<<3,i[o-1]=n>>>29,i}(t=function(t){t=t.replace(/\r\n/g,"\n");for(var e="",n=0;n<t.length;n++){var r=t.charCodeAt(n);r<128?e+=String.fromCharCode(r):r>127&&r<2048?(e+=String.fromCharCode(r>>6|192),e+=String.fromCharCode(63&r|128)):(e+=String.fromCharCode(r>>12|224),e+=String.fromCharCode(r>>6&63|128),e+=String.fromCharCode(63&r|128))}return e}(t)),h=1732584193,v=4023233417,y=2562383102,g=271733878,s=0;s<m.length;s+=16)l=h,f=v,p=y,d=g,h=o(h,v,y,g,m[s+0],7,3614090360),g=o(g,h,v,y,m[s+1],12,3905402710),y=o(y,g,h,v,m[s+2],17,606105819),v=o(v,y,g,h,m[s+3],22,3250441966),h=o(h,v,y,g,m[s+4],7,4118548399),g=o(g,h,v,y,m[s+5],12,1200080426),y=o(y,g,h,v,m[s+6],17,2821735955),v=o(v,y,g,h,m[s+7],22,4249261313),h=o(h,v,y,g,m[s+8],7,1770035416),g=o(g,h,v,y,m[s+9],12,2336552879),y=o(y,g,h,v,m[s+10],17,4294925233),v=o(v,y,g,h,m[s+11],22,2304563134),h=o(h,v,y,g,m[s+12],7,1804603682),g=o(g,h,v,y,m[s+13],12,4254626195),y=o(y,g,h,v,m[s+14],17,2792965006),h=i(h,v=o(v,y,g,h,m[s+15],22,1236535329),y,g,m[s+1],5,4129170786),g=i(g,h,v,y,m[s+6],9,3225465664),y=i(y,g,h,v,m[s+11],14,643717713),v=i(v,y,g,h,m[s+0],20,3921069994),h=i(h,v,y,g,m[s+5],5,3593408605),g=i(g,h,v,y,m[s+10],9,38016083),y=i(y,g,h,v,m[s+15],14,3634488961),v=i(v,y,g,h,m[s+4],20,3889429448),h=i(h,v,y,g,m[s+9],5,568446438),g=i(g,h,v,y,m[s+14],9,3275163606),y=i(y,g,h,v,m[s+3],14,4107603335),v=i(v,y,g,h,m[s+8],20,1163531501),h=i(h,v,y,g,m[s+13],5,2850285829),g=i(g,h,v,y,m[s+2],9,4243563512),y=i(y,g,h,v,m[s+7],14,1735328473),h=a(h,v=i(v,y,g,h,m[s+12],20,2368359562),y,g,m[s+5],4,4294588738),g=a(g,h,v,y,m[s+8],11,2272392833),y=a(y,g,h,v,m[s+11],16,1839030562),v=a(v,y,g,h,m[s+14],23,4259657740),h=a(h,v,y,g,m[s+1],4,2763975236),g=a(g,h,v,y,m[s+4],11,1272893353),y=a(y,g,h,v,m[s+7],16,4139469664),v=a(v,y,g,h,m[s+10],23,3200236656),h=a(h,v,y,g,m[s+13],4,681279174),g=a(g,h,v,y,m[s+0],11,3936430074),y=a(y,g,h,v,m[s+3],16,3572445317),v=a(v,y,g,h,m[s+6],23,76029189),h=a(h,v,y,g,m[s+9],4,3654602809),g=a(g,h,v,y,m[s+12],11,3873151461),y=a(y,g,h,v,m[s+15],16,530742520),h=u(h,v=a(v,y,g,h,m[s+2],23,3299628645),y,g,m[s+0],6,4096336452),g=u(g,h,v,y,m[s+7],10,1126891415),y=u(y,g,h,v,m[s+14],15,2878612391),v=u(v,y,g,h,m[s+5],21,4237533241),h=u(h,v,y,g,m[s+12],6,1700485571),g=u(g,h,v,y,m[s+3],10,2399980690),y=u(y,g,h,v,m[s+10],15,4293915773),v=u(v,y,g,h,m[s+1],21,2240044497),h=u(h,v,y,g,m[s+8],6,1873313359),g=u(g,h,v,y,m[s+15],10,4264355552),y=u(y,g,h,v,m[s+6],15,2734768916),v=u(v,y,g,h,m[s+13],21,1309151649),h=u(h,v,y,g,m[s+4],6,4149444226),g=u(g,h,v,y,m[s+11],10,3174756917),y=u(y,g,h,v,m[s+2],15,718787259),v=u(v,y,g,h,m[s+9],21,3951481745),h=r(h,l),v=r(v,f),y=r(y,p),g=r(g,d);return 32==e?(c(h)+c(v)+c(y)+c(g)).toLowerCase():(c(v)+c(y)).toLowerCase()}
-function sha1(msg){function rotate_left(n,s){var t4=(n<<s)|(n>>>(32-s));return t4};function cvt_hex(val){var str='';var i;var v;for(i=7;i>=0;i--){v=(val>>>(i*4))&0x0f;str+=v.toString(16)}return str};function Utf8Encode(string){string=string.replace(/\r\n/g,'\n');var utftext='';for(var n=0;n<string.length;n++){var c=string.charCodeAt(n);if(c<128){utftext+=String.fromCharCode(c)}else if((c>127)&&(c<2048)){utftext+=String.fromCharCode((c>>6)|192);utftext+=String.fromCharCode((c&63)|128)}else{utftext+=String.fromCharCode((c>>12)|224);utftext+=String.fromCharCode(((c>>6)&63)|128);utftext+=String.fromCharCode((c&63)|128)}}return utftext};var blockstart;var i,j;var W=new Array(80);var H0=0x67452301;var H1=0xEFCDAB89;var H2=0x98BADCFE;var H3=0x10325476;var H4=0xC3D2E1F0;var A,B,C,D,E;var temp;msg=Utf8Encode(msg);var msg_len=msg.length;var word_array=new Array();for(i=0;i<msg_len-3;i+=4){j=msg.charCodeAt(i)<<24|msg.charCodeAt(i+1)<<16|msg.charCodeAt(i+2)<<8|msg.charCodeAt(i+3);word_array.push(j)}switch(msg_len%4){case 0:i=0x080000000;break;case 1:i=msg.charCodeAt(msg_len-1)<<24|0x0800000;break;case 2:i=msg.charCodeAt(msg_len-2)<<24|msg.charCodeAt(msg_len-1)<<16|0x08000;break;case 3:i=msg.charCodeAt(msg_len-3)<<24|msg.charCodeAt(msg_len-2)<<16|msg.charCodeAt(msg_len-1)<<8|0x80;break}word_array.push(i);while((word_array.length%16)!=14)word_array.push(0);word_array.push(msg_len>>>29);word_array.push((msg_len<<3)&0x0ffffffff);for(blockstart=0;blockstart<word_array.length;blockstart+=16){for(i=0;i<16;i++)W[i]=word_array[blockstart+i];for(i=16;i<=79;i++)W[i]=rotate_left(W[i-3]^W[i-8]^W[i-14]^W[i-16],1);A=H0;B=H1;C=H2;D=H3;E=H4;for(i=0;i<=19;i++){temp=(rotate_left(A,5)+((B&C)|(~B&D))+E+W[i]+0x5A827999)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=20;i<=39;i++){temp=(rotate_left(A,5)+(B^C^D)+E+W[i]+0x6ED9EBA1)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=40;i<=59;i++){temp=(rotate_left(A,5)+((B&C)|(B&D)|(C&D))+E+W[i]+0x8F1BBCDC)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=60;i<=79;i++){temp=(rotate_left(A,5)+(B^C^D)+E+W[i]+0xCA62C1D6)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}H0=(H0+A)&0x0ffffffff;H1=(H1+B)&0x0ffffffff;H2=(H2+C)&0x0ffffffff;H3=(H3+D)&0x0ffffffff;H4=(H4+E)&0x0ffffffff}var temp=cvt_hex(H0)+cvt_hex(H1)+cvt_hex(H2)+cvt_hex(H3)+cvt_hex(H4);return temp.toLowerCase()}
+        // 互动任务：发帖 / 点赞 / 分享 各 1 分，按实际完成结果计分
+        let interactGain = 0;
 
-// ========== 签名函数（使用配置中的密钥） ==========
-function getSign(type, params = {}, body = '', cfg) {
-  const c = cfg || getConfig();
-  const ac = c[type] || c.app;
-  const query = toQuery(params);
-  const timestamp = new Date().getTime();
-  const nonce = type === "h5" ? getUuid() : timestamp + getRandomChars();
-  const param = `appId=${ac.appId}&nonce=${nonce}&timestamp=${timestamp}`;
-  const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : '';
-  const signature = type === "h5" ? `${query}${param}${ac.appSecret}` : `${bodyStr}${param}${ac.appSecret}`;
-  const sign = md5(sha1(signature), 32).toString();
-  return { 'cfmoto-x-param': param, 'cfmoto-x-sign': sign, 'cfmoto-x-sign-type': '0' };
-}
+        // 创建动态（每日首次发帖）
+        let postId = await user.createArticle();
+        if (postId) interactGain += 1;
+        await $.wait(user.getRandomTime());
+        // 获取动态列表
+        postId = postId || (await user.getArticles());
+        if (!postId) {
+          $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: \u672a\u83b7\u53d6\u5230\u52a8\u6001ID\uff0c\u8df3\u8fc7\u4e92\u52a8\u4efb\u52a1`);
+          $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: 未获取到动态ID`);
+          $.failCount++;
+          continue;
+        }
+        await $.wait(user.getRandomTime());
+        // 点赞
+        if (await user.thumbsUp(postId)) interactGain += 1;
+        await $.wait(user.getRandomTime());
+        // 评论（评论不加分，但分享前必须有评论）
+        await user.comment(postId);
+        await $.wait(user.getRandomTime());
+        // 分享动态
+        if (await user.share(postId)) interactGain += 1;
+        await $.wait(user.getRandomTime());
 
-// ========== HTTP 请求 ==========
-function httpGet(url, headers) {
-  return new Promise((resolve) => {
-    const isQX = typeof $task !== "undefined";
-    if (isQX) {
-      $task.fetch({ url, headers, method: "GET" }).then(
-        function(resp) {
-          try { resolve(JSON.parse(resp.body)); }
-          catch(e) { resolve({ error: "parse error", raw: resp.body }); }
-        },
-        function(err) { resolve({ error: String(err && err.error || err || "request failed") }); }
-      );
-    } else {
-      $httpClient.get({ url, headers }, function(err, resp, body) {
-        if (err) { resolve({ error: String(err) }); return; }
-        try { resolve(JSON.parse(body)); } catch(e) { resolve({ error: "parse error", raw: body }); }
-      });
-    }
-  });
-}
+        // 删除动态
+        await user.deletePost(postId);
+        await $.wait(user.getRandomTime());
+        // 查询当前积分（总分）
+        const score = await user.getSignInfo();
 
-// ========== 获取单账号实时数据 ==========
-async function fetchAccountData(acc, cfg) {
-  const token = cleanToken(acc.token);
-  const userId = acc.userId || "";
-  const month = new Date().getFullYear() + "-" + (new Date().getMonth() + 1);
-  const today = new Date().toISOString().slice(0, 10);
+        // 本次增加积分 = 签到 + 盲盒 + 互动任务
+        const gain = (integral || 0) + (integralScore || 0) + interactGain;
+        // 原积分（总分反推）
+        const oldScore = typeof score === "number" ? score - gain : "未知";
 
-  const result = {
-    userName: acc.userName || "未知用户",
-    userId: userId,
-    score: 0,
-    signedToday: false,
-    continueDays: 0,
-    todayScore: 0,
-    signCount: 0,
-    last7: [],
-    error: null
-  };
-
-  // 1. 积分
-  try {
-    const signH = getSign("app", {}, '', cfg);
-    const infoUrl = `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`;
-    const infoRes = await httpGet(infoUrl, {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json;charset=UTF-8",
-      "interfaceversion": "2",
-      ...signH
-    });
-    if (infoRes.code == "10000" && infoRes.data) {
-      result.score = Number(infoRes.data.score) || 0;
-      if (infoRes.data.nickName) result.userName = infoRes.data.nickName;
-    }
-  } catch(e) { result.error = "积分获取失败"; }
-
-  // 2. 签到状态（跨月：并行请求当月+上月，合并计算连签，避免1号重置）
-  try {
-    const now = new Date();
-    const curMonth = now.getFullYear() + "-" + (now.getMonth() + 1);
-    const lastDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonth = lastDate.getFullYear() + "-" + (lastDate.getMonth() + 1);
-    const baseHeaders = {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json;charset=UTF-8",
-      "interfaceversion": "2",
-      "user_id": userId
-    };
-    const [curRes, lastRes] = await Promise.all([
-      httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${curMonth}`, { ...baseHeaders, ...getSign("h5", { month: curMonth }, '', cfg) }),
-      httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${lastMonth}`, { ...baseHeaders, ...getSign("h5", { month: lastMonth }, '', cfg) })
-    ]);
-    const lastList = (lastRes.code == "10000" && lastRes.data) ? (lastRes.data.nowSignDetailVos || []) : [];
-    const curList = (curRes.code == "10000" && curRes.data) ? (curRes.data.nowSignDetailVos || []) : [];
-    const list = [...lastList, ...curList];
-    if (curRes.code == "10000" && curRes.data) {
-      result.signCount = Number(curRes.data.signCount) || 0;
-    }
-    const todayEntry = curList.find(x => x.createDate === today);
-    result.signedToday = !!(todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5));
-    result.todayScore = todayEntry ? (Number(todayEntry.integralScore) || 0) : 0;
-    // 跨月连签：从今天往前数，遇到断签停止（不按月重置）
-    const todayIdx = list.findIndex(x => x.createDate === today);
-    let cont = 0;
-    if (todayIdx >= 0) {
-      for (let i = todayIdx; i >= 0; i--) {
-        const st = list[i]?.signStatue;
-        if (st == 3 || st == 5) cont++; else break;
+        // 汇总到总通知
+        $.notifyMsg.push(`「${user.userName}」积分: ${oldScore}+${gain}, 累签: ${count}天`);
+        $.successCount++;
+      } else {
+        // ck 失效
+        $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: ck失效或请求异常`);
+        $.failCount++;
       }
     }
-    result.continueDays = cont;
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const ds = d.toISOString().slice(0, 10);
-      const entry = list.find(x => x.createDate === ds);
-      result.last7.push({
-        date: ds.slice(5),
-        signed: !!(entry && (entry.signStatue == 3 || entry.signStatue == 5)),
-        isToday: i === 0
-      });
+  } catch (e) {
+    $.log(`⛔️ main run error => ${e}`);
+    throw new Error(`⛔️ main run error => ${e}`);
+  }
+}
+
+
+class UserInfo {
+  constructor(user) {
+    //默认属性
+    this.index = ++userIdx;
+    this.token = user.token || user;
+    this.userId = user.userId;
+    this.userName = user.userName;
+    this.userAgent = user.userAgent;
+    this.ckStatus = true;
+    //请求封装
+    this.baseUrl = ``;
+    this.host = "";
+    this.headers = {
+      "Content-Type": "application/json;charset=UTF-8",
+      "Authorization": this.token,
+      "User-Agent": this.userAgent,
     }
-  } catch(e) { if (!result.error) result.error = "签到状态获取失败"; }
-
-  return result;
-}
-
-// ========== 解析请求 body ==========
-function parseBody(req) {
-  try {
-    if (!req.body) return {};
-    if (typeof req.body === "object") return req.body;
-    return JSON.parse(req.body);
-  } catch(e) { return {}; }
-}
-
-// ========== HTML: 看板页 ==========
-function renderDashboard(accounts, data, cfg, updateTime) {
-  const totalScore = data.reduce((s, a) => s + (a.score || 0), 0);
-  const signedCount = data.filter(a => a.signedToday).length;
-
-  const cards = data.map((a, idx) => {
-    // 盲盒30天一轮，满30第二天重置为第1天
-    const blindDay = a.continueDays === 0 ? 0 : ((a.continueDays - 1) % 30) + 1;
-    const blindRound = a.continueDays === 0 ? 0 : Math.ceil(a.continueDays / 30);
-    const blindPct = Math.round((blindDay / 30) * 100);
-    const blindRemain = 30 - blindDay;
-    const last7 = a.last7.map(d => `
-      <div class="day-cell ${d.signed ? 'day-ok' : 'day-miss'} ${d.isToday ? 'day-today' : ''}" title="${d.date}">
-        <span class="day-num">${d.date.slice(3)}</span>
-        <span class="day-mark">${d.signed ? '✓' : '—'}</span>
-      </div>`).join('');
-
-    return `
-    <div class="acc-card ${a.error ? 'acc-error' : ''}">
-      <div class="acc-head">
-        <div class="acc-avatar">${(a.userName || '?').charAt(0).toUpperCase()}</div>
-        <div class="acc-info">
-          <div class="acc-name">${a.userName}</div>
-          <div class="acc-uid num">ID ${a.userId}</div>
-        </div>
-        <div class="acc-badge ${a.signedToday ? 'badge-ok' : 'badge-miss'}">${a.signedToday ? '已签到' : '未签到'}</div>
-      </div>
-      ${a.error ? `<div class="acc-err-msg">${a.error}</div>` : ''}
-      <div class="acc-kpi">
-        <div class="kpi-item"><div class="kpi-val num">${a.score.toLocaleString()}</div><div class="kpi-lbl">总积分</div></div>
-        <div class="kpi-item"><div class="kpi-val num" style="color:#10B981">+${a.todayScore}</div><div class="kpi-lbl">今日签到</div></div>
-        <div class="kpi-item"><div class="kpi-val num" style="color:#0891B2">${a.continueDays}</div><div class="kpi-lbl">连签天数</div></div>
-        <div class="kpi-item"><div class="kpi-val num" style="color:#8B5CF6">${blindRemain}</div><div class="kpi-lbl">距盲盒</div></div>
-      </div>
-      <div class="blind-section">
-        <div class="blind-label"><span>盲盒进度（第${blindRound}轮）</span><span class="num">${blindDay}/30 · ${blindPct}%</span></div>
-        <div class="blind-bar"><div class="blind-fill" style="width:${blindPct}%"></div></div>
-      </div>
-      <div class="week-section">
-        <div class="week-label">近 7 天签到</div>
-        <div class="week-grid">${last7}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>极核 ZEEHO 签到面板</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F0F4F8;color:#0F172A;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-.num{font-variant-numeric:tabular-nums}
-.topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
-.brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0}
-.brand-text h1{font-size:15px;font-weight:700}
-.brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
-.top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.stat-chip{font-size:12px;color:#475569;background:#F1F5F9;padding:5px 12px;border-radius:14px;display:flex;align-items:center;gap:5px}
-.stat-chip .dot{width:7px;height:7px;border-radius:50%;background:#10B981}
-.nav-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s;font-family:inherit}
-.nav-btn:hover{background:#F1F5F9}
-.nav-btn.primary{background:#0891B2;color:#fff;border-color:#0891B2}
-.nav-btn.primary:hover{background:#0E7490}
-.container{max-width:1100px;margin:0 auto;padding:18px 16px 40px}
-.summary-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-.summary-card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;position:relative;overflow:hidden}
-.summary-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
-.summary-card.s1::before{background:#F59E0B}
-.summary-card.s2::before{background:#0891B2}
-.summary-card.s3::before{background:#10B981}
-.summary-card .sl{font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;font-weight:500}
-.summary-card .sv{font-size:26px;font-weight:900;margin-top:4px}
-.summary-card .ss{font-size:11px;color:#64748B;margin-top:3px}
-.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
-.acc-card{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;transition:box-shadow .2s}
-.acc-card:hover{box-shadow:0 4px 20px rgba(0,0,0,.06)}
-.acc-card.acc-error{border-color:#FCA5A5;background:#FEF2F2}
-.acc-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.acc-avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0891B2,#0E7490);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
-.acc-info{flex:1;min-width:0}
-.acc-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.acc-uid{font-size:11px;color:#94A3B8;margin-top:1px}
-.acc-badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:10px;flex-shrink:0}
-.badge-ok{background:#D1FAE5;color:#065F46}
-.badge-miss{background:#FEE2E2;color:#991B1B}
-.acc-err-msg{font-size:11px;color:#DC2626;background:#FEE2E2;padding:6px 10px;border-radius:6px;margin-bottom:10px}
-.acc-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
-.kpi-item{text-align:center;background:#F8FAFC;border-radius:8px;padding:8px 4px}
-.kpi-val{font-size:18px;font-weight:800;color:#0F172A}
-.kpi-lbl{font-size:10px;color:#94A3B8;margin-top:2px}
-.blind-section{margin-bottom:12px}
-.blind-label{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748B;margin-bottom:5px;font-weight:500}
-.blind-bar{height:18px;background:#F1F5F9;border-radius:9px;overflow:hidden;border:1px solid #E2E8F0}
-.blind-fill{height:100%;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:8px;transition:width .5s ease}
-.week-section{}
-.week-label{font-size:11px;color:#64748B;font-weight:500;margin-bottom:6px}
-.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
-.day-cell{aspect-ratio:1;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9px}
-.day-ok{background:#E0F7FB;border:1px solid #7DD3FC;color:#0E7490}
-.day-miss{background:#F1F5F9;border:1px dashed #E2E8F0;color:#CBD5E1}
-.day-today{background:#0891B2;border:1px solid #0E7490;color:#fff;box-shadow:0 0 0 2px #E0F7FB}
-.day-num{font-weight:700;font-size:10px}
-.day-mark{font-size:8px;margin-top:1px}
-.footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;margin-top:10px}
-.footer a{color:#0891B2;text-decoration:none}
-.empty-state{text-align:center;padding:60px 20px;color:#94A3B8}
-.empty-state p{font-size:14px;margin-bottom:6px}
-.empty-state .hint{font-size:12px;opacity:.7}
-.config-info{font-size:10px;color:#94A3B8;margin-top:8px;text-align:center}
-@media(max-width:640px){.summary-row{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.acc-kpi{grid-template-columns:repeat(2,1fr)}.topbar{padding:12px 14px}.container{padding:14px 12px 30px}}
-</style></head><body>
-<div class="topbar">
-  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
-  <div class="top-actions">
-    <div class="stat-chip"><span class="dot"></span><span id="signedInfo">${signedCount}/${data.length} 已签到</span></div>
-    <a href="/config" class="nav-btn">配置</a>
-    <button class="nav-btn primary" onclick="location.reload()">刷新</button>
-  </div>
-</div>
-<div class="container">
-  ${data.length === 0 ? `
-  <div class="empty-state">
-    <p>未找到极核账号</p>
-    <p class="hint">请先在「配置」页面添加账号（Authorization Bearer token），或运行签到脚本抓 Cookie</p>
-    <a href="/config" class="nav-btn primary" style="margin-top:16px">去添加账号</a>
-  </div>` : `
-  <div class="summary-row">
-    <div class="summary-card s1"><div class="sl">账号总积分</div><div class="sv num">${totalScore.toLocaleString()}</div><div class="ss">${data.length} 个账号合计</div></div>
-    <div class="summary-card s2"><div class="sl">今日签到</div><div class="sv num">${signedCount} / ${data.length}</div><div class="ss">${data.length - signedCount > 0 ? (data.length - signedCount) + ' 个未签到' : '全部已签到'}</div></div>
-    <div class="summary-card s3"><div class="sl">数据更新时间</div><div class="sv" style="font-size:18px;padding-top:6px">${updateTime}</div><div class="ss">来自代理工具实时 API</div></div>
-  </div>
-  <div class="cards-grid">${cards}</div>
-  <div class="config-info">App端 appId: ${cfg.app.appId} · H5端 appId: ${cfg.h5.appId} · 可在「配置」页修改</div>
-  `}
-</div>
-<div class="footer">极核 ZEEHO 签到看板 · 作者 <a href="https://github.com/mlink798">lucky</a> · 数据来自代理工具实时 API</div>
-</body></html>`;
-}
-
-// ========== HTML: 配置页 ==========
-function renderConfig(accounts, cfg) {
-  const accRows = accounts.map((a, idx) => `
-    <div class="acc-row" data-idx="${idx}">
-      <div class="acc-row-head">
-        <span class="acc-row-title">账号 ${idx + 1}</span>
-        <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
-      </div>
-      <div class="form-grid">
-        <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
-        <div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..."></div>
-      </div>
-      <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
-        <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
-      </div>
-    </div>`).join('');
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>极核 ZEEHO · 配置</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F0F4F8;color:#0F172A;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-.num{font-variant-numeric:tabular-nums}
-.topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
-.brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0}
-.brand-text h1{font-size:15px;font-weight:700}
-.brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
-.nav-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s;font-family:inherit}
-.nav-btn:hover{background:#F1F5F9}
-.nav-btn.primary{background:#0891B2;color:#fff;border-color:#0891B2}
-.container{max-width:800px;margin:0 auto;padding:18px 16px 40px}
-.panel{background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:16px;overflow:hidden}
-.panel-head{padding:14px 18px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
-.panel-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
-.panel-title .bar{width:3px;height:14px;border-radius:2px;background:#0891B2}
-.panel-body{padding:18px}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.form-item{margin-bottom:0}
-.form-item label{display:block;font-size:11px;color:#64748B;margin-bottom:4px;font-weight:500}
-.form-item input,.form-item select{width:100%;padding:9px 11px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#FAFBFC}
-.form-item input:focus{border-color:#0891B2;box-shadow:0 0 0 3px #E0F7FB}
-.form-item.full{grid-column:1/-1}
-.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;transition:all .15s;font-family:inherit}
-.btn:hover{background:#F1F5F9}
-.btn-primary{background:#0891B2;color:#fff;border-color:#0891B2}
-.btn-primary:hover{background:#0E7490}
-.btn-danger{background:#FEE2E2;color:#991B1B;border-color:#FECACA}
-.btn-danger:hover{background:#FECACA}
-.btn-sm{padding:5px 12px;font-size:11px}
-.btn-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
-.acc-row{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:12px}
-.acc-row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.acc-row-title{font-size:13px;font-weight:700;color:#0F172A}
-.hint{font-size:11px;color:#94A3B8;margin-top:6px;line-height:1.6}
-.hint code{background:#F1F5F9;padding:1px 5px;border-radius:4px;font-size:11px}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none}
-.toast.show{opacity:1}
-.toast.ok{background:#10B981;color:#fff}
-.toast.err{background:#EF4444;color:#fff}
-@media(max-width:640px){.form-grid{grid-template-columns:1fr}.container{padding:14px 12px 30px}}
-</style></head><body>
-<div class="topbar">
-  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
-  <div><a href="/" class="nav-btn primary">返回看板</a></div>
-</div>
-<div class="container">
-
-  <!-- 签名配置 -->
-  <div class="panel">
-    <div class="panel-head"><div class="panel-title"><span class="bar"></span>签名密钥配置</div></div>
-    <div class="panel-body">
-      <div class="form-grid">
-        <div class="form-item"><label>App端 appId</label><input type="text" id="cfg_app_id" value="${cfg.app.appId}"></div>
-        <div class="form-item"><label>App端 appSecret</label><input type="text" id="cfg_app_secret" value="${cfg.app.appSecret}" style="font-family:monospace;font-size:11px"></div>
-        <div class="form-item"><label>H5端 appId</label><input type="text" id="cfg_h5_id" value="${cfg.h5.appId}"></div>
-        <div class="form-item"><label>H5端 appSecret</label><input type="text" id="cfg_h5_secret" value="${cfg.h5.appSecret}" style="font-family:monospace;font-size:11px"></div>
-      </div>
-      <div class="hint">修改后点击「保存配置」生效。密钥用于请求极核 API 的签名计算（md5(sha1(param+secret))）。</div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
-        <button class="btn" onclick="resetConfig()">恢复默认</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 账号管理 -->
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-title"><span class="bar" style="background:#10B981"></span>账号管理（${accounts.length} 个）</div>
-      <button class="btn btn-sm" onclick="addAccount()">+ 添加账号</button>
-    </div>
-    <div class="panel-body">
-      <div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
-      <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。用户ID可在抓包响应 <code>data.id</code> 中找到。</div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="saveAccounts()">保存账号</button>
-      </div>
-    </div>
-  </div>
-
-</div>
-<div id="toast" class="toast"></div>
-<script>
-function showToast(msg, type) {
-  var t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show ' + (type || 'ok');
-  setTimeout(function(){ t.className = 'toast'; }, 2000);
-}
-function saveConfig() {
-  var data = {
-    app: { appId: document.getElementById('cfg_app_id').value, appSecret: document.getElementById('cfg_app_secret').value },
-    h5: { appId: document.getElementById('cfg_h5_id').value, appSecret: document.getElementById('cfg_h5_secret').value }
-  };
-  fetch('/api/save-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('配置已保存'); } else { showToast('保存失败', 'err'); } })
-    .catch(function(){ showToast('保存失败', 'err'); });
-}
-function resetConfig() {
-  document.getElementById('cfg_app_id').value = 'S7qPWPU1';
-  document.getElementById('cfg_app_secret').value = 'c5e0da7f4da28df805694ec3dd1fc6792e9df99d';
-  document.getElementById('cfg_h5_id').value = 'Sw5F9uJi';
-  document.getElementById('cfg_h5_secret').value = '46870a8f678a09109468f5b0168818b91c292845';
-  showToast('已恢复默认（需点击保存）');
-}
-var accCount = ${accounts.length};
-function addAccount() {
-  accCount++;
-  var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..."></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
-  var list = document.getElementById('accList');
-  if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
-    list.insertAdjacentHTML('beforeend', html);
-  } else {
-    list.innerHTML = html;
-  }
-}
-function deleteAccount(idx) {
-  var row = document.querySelector('.acc-row[data-idx="'+idx+'"]');
-  if (row) { row.remove(); showToast('已删除（需点击保存）'); }
-}
-function saveAccounts() {
-  var rows = document.querySelectorAll('.acc-row');
-  var list = [];
-  rows.forEach(function(row) {
-    var idx = row.getAttribute('data-idx');
-    var name = document.getElementById('acc_name_'+idx);
-    var uid = document.getElementById('acc_uid_'+idx);
-    var token = document.getElementById('acc_token_'+idx);
-    if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+    this.getRandomTime = () => randomInt(1e3, 3e3);
+    this.fetch = async (o) => {
+      try {
+        if (typeof o === 'string') o = { url: o };
+        if (o?.url?.startsWith("/")) o.url = this.host + o.url
+        const res = await Request({ ...o, headers: o.headers || this.headers, url: o.url || this.baseUrl })
+        debug(res, o?.url?.replace(/\/+$/, '').substring(o?.url?.lastIndexOf('/') + 1));
+        if (res?.code == 40001) throw new Error(res?.message || `用户需要去登录`);
+        return res;
+      } catch (e) {
+        this.ckStatus = false;
+        $.log(`⛔️ 请求发起失败！${e}`);
+      }
     }
-  });
-  fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('账号已保存（'+list.length+'个）'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
-    .catch(function(){ showToast('保存失败', 'err'); });
-}
-</script>
-</body></html>`;
-}
-
-// ========== 响应辅助（兼容 QX / Loon / Surge） ==========
-function sendResp(status, headers, body) {
-  const isQX = typeof $task !== "undefined";
-  if (isQX) {
-    $done({ status: status, headers: headers, body: body });
-  } else {
-    $done({ response: { status: status, headers: headers, body: body } });
   }
-}
-// ========== 主入口：重写路由 ==========
-!(async () => {
-  if (typeof $request === "undefined" || !$request) {
-    $.log("极核看板增强版：请通过重写规则访问 http://zeeho.box");
-    $done();
-    return;
-  }
-
-  const url = $request.url || "";
-  const method = ($request.method || "GET").toUpperCase();
-  let path = "/";
-  try {
-    const u = new URL(url);
-    path = u.pathname || "/";
-  } catch(e) { path = "/"; }
-
-  // API: 保存配置
-  if (method === "POST" && path === "/api/save-config") {
-    const body = parseBody($request);
-    const ok = saveConfig(body);
-    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok }));
-    return;
-  }
-
-  // API: 保存账号
-  if (method === "POST" && path === "/api/save-accounts") {
-    const body = parseBody($request);
-    const list = Array.isArray(body.accounts) ? body.accounts : [];
-    const ok = saveAccounts(list);
-    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
-    return;
-  }
-
-  // 配置页
-  if (path === "/config") {
-    const cfg = getConfig();
-    const accounts = getAccounts();
-    const html = renderConfig(accounts, cfg);
-    sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
-    return;
-  }
-
-  // 看板页（默认）
-  const cfg = getConfig();
-  const accounts = getAccounts();
-  const now = new Date();
-  const updateTime = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0") + " " + String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0") + ":" + String(now.getSeconds()).padStart(2,"0");
-
-  // 多账号并行获取实时数据
-  const data = [];
-  for (const acc of accounts) {
+  //签到 (2026-08-28 HAR 适配：POST 返回用户资料而非 signInStatus，需二次查 info 确认今日是否已签)
+  async signin() {
     try {
-      const d = await fetchAccountData(acc, cfg);
-      data.push(d);
-    } catch(e) {
-      data.push({ userName: acc.userName || "未知", userId: acc.userId || "", score: 0, signedToday: false, continueDays: 0, todayScore: 0, signCount: 0, last7: [], error: "请求异常" });
+      const today = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
+      const month = today.slice(0, 7);
+      const infoOpts = {
+        url: "https://h5.zeehoev.com/cfmotoservermine/signin/info",
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('h5', { month })),
+        params: { month },
+        dataType: "json"
+      };
+      // 1) 先查今日是否已签
+      let infoRes = await this.fetch(infoOpts);
+      let todayEntry = null;
+      if (infoRes?.code == '10000') {
+        todayEntry = (infoRes?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+      }
+      if (todayEntry && (todayEntry.signStatue === 3 || todayEntry.signStatue === 5)) {
+        $.log(`✅ 签到任务: 今日已签到`);
+        return null;
+      }
+      // 2) 执行签到（无参、空body，与HAR一致）
+      const opts = {
+        url: "https://h5.zeehoev.com/cfmotoservermine/signin",
+        type: "post",
+        headers: Object.assign({}, this.headers, getSign('h5', {})),
+        dataType: "json"
+      }
+      let res = await this.fetch(opts);
+      if (res?.code == '10000' && res?.message == '操作成功') {
+        // 3) 再查一次 info，取今日积分
+        let infoRes2 = await this.fetch(infoOpts);
+        const te = (infoRes2?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+        const point = te?.integralScore ? Number(te.integralScore) : 0;
+        $.log(`✅ 签到任务: 已完成 +${point}积分`);
+        return point;
+      } else {
+        $.log(`⛔️ 签到任务: ${res?.message}`);
+        return null;
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 签到失败! ${e}`);
+    }
+  }
+    // 查询签到记录
+
+
+  async getSignRecord() {
+
+  try {
+
+    const params = {
+      month: new Date().getFullYear() + '-' + (new Date().getMonth() + 1),
+    };
+
+    const opts = {
+      url: "https://h5.zeehoev.com/cfmotoservermine/signin/info",
+      type: "get",
+      headers: Object.assign({}, this.headers, getSign('h5', params)),
+      params,
+      dataType: "json"
+    };
+
+    let res = await this.fetch(opts);
+
+    if (res?.code == '10000' && res?.message == '操作成功') {
+
+      const list = res?.data?.nowSignDetailVos || [];
+
+      // 今日日期（本地时区，不能用 toISOString，否则 08:00 前会算成前一天 → 累签归零）
+      const now = new Date();
+      const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+
+      // 找到今天索引
+      const todayIndex = list.findIndex(
+        item => item.createDate === today
+      );
+
+      // 连续签到天数
+      let count = 0;
+
+      // 从今天开始往前统计
+      for (let i = todayIndex; i >= 0; i--) {
+
+        const status = list[i]?.signStatue;
+
+        // 3=已签到 5=补签
+        if (status == 3 || status == 5) {
+          count++;
+        } else {
+          break;
+        }
+      }
+
+      // 今日积分
+      const prize = res?.data?.integral || 0;
+
+      // 连签累计奖励次数
+      const prizes = res?.data?.signCount || 0;
+
+      $.log(
+        `✅ 连续签到${count}天 | 今日积分${prize} | 连签奖励累计${prizes}`
+      );
+
+      return {
+        count,
+        prize,
+        prizes
+      };
+
+    }
+
+    return null;
+
+  } catch (e) {
+
+    this.ckStatus = false;
+    $.log(`⛔️ 查询签到记录失败! ${e}`);
+
+  }
+
+}
+    // 开启盲盒
+
+
+  async lottery() {
+    try {
+      const date = new Date();
+      const today = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+
+      const params = {
+        supplementDate: today
+      }
+      const opts = {
+        url: "https://h5.zeehoev.com/cfmotoservermine/signin/supplementPrize",
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('h5', params)),
+        params,
+        dataType: "json"
+      }
+      let res = await this.fetch(opts);
+      if (res?.code == '10000') {
+
+        const integralScore = res?.data?.integral || res?.data?.integralScore || 0;
+        const prizesName = res?.data?.prizesName || (integralScore + '积分');
+        $.log(`✅ 盲盒抽奖获得: ${prizesName}`);
+        return Number(integralScore);
+      } else {
+        $.log(`⚠️ 盲盒抽奖(今日可能无盲盒): ${res?.message}`);
+        return 0;
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 盲盒抽奖发起失败! ${e}`);
+      return 0;
+    }
+  }
+  
+  // 创建动态
+  async createArticle() {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle`,
+        type: "post",
+        dataType: "json",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        body: {
+          postcontent: "开心的一天"
+        }
+      }
+      let res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        const postId = getPostId(res?.data);
+        $.log(`\u2705 \u521b\u5efa\u52a8\u6001: \u6210\u529f${postId ? ` ${postId}` : ''}`);
+        return postId;
+      } else {
+        $.log(`\u26d4\ufe0f \u521b\u5efa\u52a8\u6001\u5931\u8d25: ${res?.message}`);
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 创建动态失败! ${e}`);
+    }
+  }
+  // 获取动态列表
+  async getArticles() {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/mineArticleInfo`,
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json",
+        params: {
+          userId: this.userId,
+          page: 1,
+          pageSize: 10
+        }
+      }
+      let res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        const list = Array.isArray(res?.data) ? res.data : (res?.data?.records || res?.data?.list || res?.data?.rows || [])
+        let postId = getPostId(list?.[0] || res?.data)
+        if (!postId) postId = await this.getCommunityArticle()
+        $.log(`\u2705 \u83b7\u53d6\u52a8\u6001: ${postId}`);
+        return postId
+      } else {
+        $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: ${res?.message}`);
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 获取动态列表失败! ${e}`);
+    }
+  }
+  async getCommunityArticle() {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/qbTzInfoNewV2`,
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json",
+        params: {
+          page: 1,
+          pageSize: 20,
+          postModule: 2,
+          slidingType: 1
+        }
+      }
+      const res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        const list = Array.isArray(res?.data) ? res.data : [];
+        const mine = list.find(item => String(item.userId || item.createBy || item.uid || '') === String(this.userId));
+        return getPostId(mine || list[0]);
+      }
+      return null;
+    } catch (e) {
+      $.log(`\u26d4\ufe0f \u83b7\u53d6\u793e\u533a\u52a8\u6001\u5931\u8d25: ${e}`);
+      return null;
     }
   }
 
-  const html = renderDashboard(accounts, data, cfg, updateTime);
-  sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
-})();
+  // 点赞动态
+  async thumbsUp(postId) {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/socialCommu/likeFavoriteInfo`,
+        type: "post",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json",
+        body: {
+          postId: String(postId),
+          kindFlag:"0"
+        }
+      }
+      const res = await this.fetch(opts);
+      const ok = res?.code == '10000';
+      if (ok) {
+        $.log(`\u2705 \u70b9\u8d5e\u52a8\u6001: ${postId}`)
+      } else {
+        $.log(`\u26d4\ufe0f \u70b9\u8d5e\u52a8\u6001\u5931\u8d25: ${res?.message}`);
+      }
+      return ok; // 用于统计互动任务积分（已完成/重复则不计分）
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 点赞动态失败! ${e}`);
+      return false;
+    }
+  }
+  // ????
+  async share(postId) {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/article/share/${postId}`,
+        type: "put",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json"
+      }
+      let res = await this.fetch(opts);
+      const ok = res?.code == '10000';
+      if (ok) {
+        $.log(`\u2705 \u5206\u4eab\u52a8\u6001: ${postId}`)
+      } else {
+        $.log(`\u26d4\ufe0f \u5206\u4eab\u52a8\u6001\u5931\u8d25: ${res?.message}`);
+      }
+      await this.adjustByShare();
+      return ok; // 用于统计互动任务积分（已完成/重复则不计分）
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`\u26d4\ufe0f \u5206\u4eab\u52a8\u6001\u5931\u8d25: ${e}`);
+      return false;
+    }
+  }
+  // ????
+  async adjustByShare() {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/adjustByShare`,
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json"
+      }
+      const res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        $.log(`\u2705 \u5206\u4eab\u79ef\u5206: \u5df2\u89e6\u53d1`)
+      } else {
+        $.log(`\u26d4\ufe0f \u5206\u4eab\u79ef\u5206\u5931\u8d25: ${res?.message}`);
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`\u26d4\ufe0f \u5206\u4eab\u79ef\u5206\u5931\u8d25: ${e}`);
+    }
+  }
+  // ????
+  async comment(postId) {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commentInfo`,
+        type: "post",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json",
+        body: {
+          postid: String(postId),
+          userId: String(this.userId),
+          comments: "\u5389\u5bb3",
+          sendTos: "[\n\n]"
+        }
+      }
+      const res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        $.log(`\u2705 \u8bc4\u8bba\u52a8\u6001: ${postId}`)
+      } else {
+        $.log(`\u26d4\ufe0f \u8bc4\u8bba\u52a8\u6001\u5931\u8d25: ${res?.message}`);
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`\u26d4\ufe0f \u8bc4\u8bba\u52a8\u6001\u5931\u8d25: ${e}`);
+    }
+  }
+  // 删除动态
+  async deletePost(postId) {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle/deleteArticle?articleId=${postId}&postType=1`,
+        type: "delete",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json"
+      }
+      const res = await this.fetch(opts);
+      if (res?.code == '10000') {
+        $.log(`\u2705 \u5220\u9664\u52a8\u6001: ${postId}`)
+      } else {
+        $.log(`\u26d4\ufe0f \u5220\u9664\u52a8\u6001\u5931\u8d25: ${res?.message}`)
+      }
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`\u26d4\ufe0f \u5220\u9664\u52a8\u6001\u5931\u8d25: ${e}`);
+    }
+  }
+  
+  // 查询用户信息
+  async getSignInfo() {
+    try {
+      const opts = {
+        url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${this.userId}`,
+        type: "get",
+        headers: Object.assign({}, this.headers, getSign('app')),
+        dataType: "json"
+      }
+      let res = await this.fetch(opts);
+      if (res?.code == '10000' && res?.message == '操作成功') {
+        const score = res?.data?.score
+        return score
+      }
+      return null
+    } catch (e) {
+      this.ckStatus = false;
+      $.log(`⛔️ 查询用户信息失败! ${e}`);
+    }
+  }
+}
+function getPostId(data) {
+  if (!data) return null;
+  if (typeof data === 'string' || typeof data === 'number') return String(data);
+  if (Array.isArray(data)) return getPostId(data[0]);
+  const direct = data.uuid || data.tuuid || data.postId || data.postid || data.articleId || data.articleID || data.id || data.dataId || data.tid;
+  if (direct) return String(direct);
+  for (const key of ['records', 'list', 'rows', 'data', 'result']) {
+    const value = data[key];
+    const postId = getPostId(value);
+    if (postId) return postId;
+  }
+  return null;
+}
+async function getCookie() {
+  if ($request && $request.method === 'OPTIONS') return;
 
-// ========== Env 类（兼容各代理工具） ==========
-function Env(e,t){class s{constructor(e){this.env=e}send(e,t="GET"){e="string"==typeof e?{url:e}:e;let s=this.get;"POST"===t&&(s=this.post);const i=new Promise((t,i)=>{s.call(this,e,(e,s,o)=>{e?i(e):t(s)})});return e.timeout?((e,t=1e3)=>Promise.race([e,new Promise((e,s)=>{setTimeout(()=>{s(new Error("请求超时"))},t)})]))(i,e.timeout):i}get(e){return this.send.call(this.env,e)}post(e){return this.send.call(this.env,e,"POST")}}return new class{constructor(e,t){this.name=e,this.http=new s(this),this.data=null,this.dataFile="box.dat",this.logs=[],this.isMute=!1,this.logSeparator="\n",this.encoding="utf-8",this.startTime=(new Date).getTime(),Object.assign(this,t),this.log("",`🔔${this.name}, 开始!`)}getEnv(){return"undefined"!=typeof $environment&&$environment["surge-version"]?"Surge":"undefined"!=typeof $environment&&$environment["stash-version"]?"Stash":"undefined"!=typeof module&&module.exports?"Node.js":"undefined"!=typeof $task?"Quantumult X":"undefined"!=typeof $loon?"Loon":"undefined"!=typeof $rocket?"Shadowrocket":void 0}isNode(){return"Node.js"===this.getEnv()}isLoon(){return"Loon"===this.getEnv()}toObj(e,t=null){try{return JSON.parse(e)}catch{return t}}toStr(e,t=null){try{return JSON.stringify(e)}catch{return t}}getdata(e){let t=this.getval(e);if(/^@/.test(e)){const[,s,i]=/^@(.*?)\.(.*?)$/.exec(e),o=s?this.getval(s):"";if(o)try{const e=JSON.parse(o);t=e?this.lodash_get(e,i,""):t}catch(e){t=""}}return t}setdata(e,t){let s=!1;if(/^@/.test(t)){const[,i,o]=/^@(.*?)\.(.*?)$/.exec(t),r=this.getval(i),a=i?"null"===r?null:r||"{}":"{}";try{const t=JSON.parse(a);this.lodash_set(t,o,e),s=this.setval(JSON.stringify(t),i)}catch(t){const r={};this.lodash_set(r,o,e),s=this.setval(JSON.stringify(r),i)}}else s=this.setval(e,t);return s}lodash_get(e,t,s){const i=t.replace(/\[(\d+)\]/g,".$1").split(".");let o=e;for(const e of i)if(o=Object(o)[e],void 0===o)return s;return o}lodash_set(e,t,s){return Object(e)!==e||(Array.isArray(t)||(t=t.toString().match(/[^.[\]]+/g)||[]),t.slice(0,-1).reduce((e,s,i)=>Object(e[s])===e[s]?e[s]:e[s]=(Math.abs(t[i+1])|0)===+t[i+1]?[]:{},e)[t[t.length-1]]=s),e}getval(e){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":return $persistentStore.read(e);case"Quantumult X":return $prefs.valueForKey(e);case"Node.js":return this.data=this.loaddata(),this.data[e];default:return this.data&&this.data[e]||null}}setval(e,t){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":return $persistentStore.write(e,t);case"Quantumult X":return $prefs.setValueForKey(e,t);case"Node.js":return this.data=this.loaddata(),this.data[t]=e,this.writedata(),!0;default:return this.data&&this.data[t]||null}}loaddata(){if(!this.isNode())return{};{this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const e=this.path.resolve(this.dataFile),t=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(e),i=!s&&this.fs.existsSync(t);if(!s&&!i)return{};{const i=s?e:t;try{return JSON.parse(this.fs.readFileSync(i))}catch(e){return{}}}}}writedata(){if(this.isNode()){this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const e=this.path.resolve(this.dataFile),t=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(e),i=!s&&this.fs.existsSync(t),o=JSON.stringify(this.data);s?this.fs.writeFileSync(e,o):i?this.fs.writeFileSync(t,o):this.fs.writeFileSync(e,o)}}get(e,t=()=>{}){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":default:$httpClient.get(e,(e,s,i)=>{!e&&s&&(s.body=i,s.statusCode=s.status?s.status:s.statusCode,s.status=s.statusCode),t(e,s,i)});break;case"Quantumult X":$task.fetch(e).then(e=>{const{statusCode:s,statusCode:i,headers:o,body:r,bodyBytes:a}=e;t(null,{status:s,statusCode:i,headers:o,body:r,bodyBytes:a},r,a)},e=>t(e&&e.error||"UndefinedError"));break;case"Node.js":let s=require("iconv-lite");this.initGotEnv(e),this.got(e).then(e=>{const{statusCode:i,statusCode:o,headers:r,rawBody:a}=e,n=s.decode(a,this.encoding);t(null,{status:i,statusCode:o,headers:r,rawBody:a,body:n},n)},e=>{const{message:i,response:o}=e;t(i,o,o&&s.decode(o.rawBody,this.encoding))})}}post(e,t=()=>{}){const s=e.method?e.method.toLocaleLowerCase():"post";switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":default:$httpClient[s](e,(e,s,i)=>{!e&&s&&(s.body=i,s.statusCode=s.status?s.status:s.statusCode,s.status=s.statusCode),t(e,s,i)});break;case"Quantumult X":e.method=s,$task.fetch(e).then(e=>{const{statusCode:s,statusCode:i,headers:o,body:r,bodyBytes:a}=e;t(null,{status:s,statusCode:i,headers:o,body:r,bodyBytes:a},r,a)},e=>t(e&&e.error||"UndefinedError"));break;case"Node.js":let i=require("iconv-lite");this.initGotEnv(e);const{url:o,...r}=e;this.got[s](o,r).then(e=>{const{statusCode:s,statusCode:o,headers:r,rawBody:a}=e,n=i.decode(a,this.encoding);t(null,{status:s,statusCode:o,headers:r,rawBody:a,body:n},n)},e=>{const{message:s,response:o}=e;t(s,o,o&&i.decode(o.rawBody,this.encoding))})}}queryStr(e){let t="";for(const s in e){let i=e[s];null!=i&&""!==i&&("object"==typeof i&&(i=JSON.stringify(i)),t+=`${s}=${i}&`)}return t=t.substring(0,t.length-1),t}log(...e){e.length>0&&(this.logs=[...this.logs,...e]),console.log(e.map(e=>e??String(e)).join(this.logSeparator))}done(e={}){const t=((new Date).getTime()-this.startTime)/1e3;switch(this.log("",`🔔${this.name}, 结束! 🕛 ${t} 秒`),this.log(),this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Quantumult X":default:$done(e);break;case"Node.js":process.exit(0)}}}(e,t)}
+  const header = ObjectKeys2LowerCase($request.headers);
+  const token = header['authorization'];
+  const userAgent = header['user-agent'];
+  const body = $.toObj($response.body);
+  if (!(body?.data)) {
+    $.msg($.name, `❌获取Cookie失败!`, "")
+    return;
+  }
+
+  const { id, nickName } = body?.data;
+  const newData = {
+    "userId": id,
+    "token": token,
+    "userName": nickName,
+    "userAgent": userAgent
+  }
+
+  userCookie = userCookie ? JSON.parse(userCookie) : [];
+  const index = userCookie.findIndex(e => e.userId == newData.userId);
+
+  userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
+
+  $.setjson(userCookie, ckName);
+  $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
+}
+function getSign(type, params = {}, body = '') {
+  // 先读取用户在看板配置页保存的签名密钥（zeeho_config），没有则用默认值
+  let appConfig = {
+    appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
+    appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
+  }
+  try {
+    const cfgRaw = $.getdata("zeeho_config");
+    if (cfgRaw) {
+      const cfg = JSON.parse(cfgRaw);
+      const c = cfg[type] || cfg.app;
+      if (c && c.appId) appConfig.appId = c.appId;
+      if (c && c.appSecret) appConfig.appSecret = c.appSecret;
+    }
+  } catch(e) {}
+  const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
+  const timestamp = new Date().getTime()
+  const nonce = type === "h5" ? getUuid() : timestamp + getRandomChars()
+  const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
+  const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
+  const signature = type === "h5" ? `${query}${param}${appConfig.appSecret}` : `${bodyStr}${param}${appConfig.appSecret}`
+  const sign = md5(sha1(signature), 32).toString()
+  return {
+    'cfmoto-x-param': param,
+    'cfmoto-x-sign': sign,
+    'cfmoto-x-sign-type': '0',
+    'timestamp': String(timestamp),
+    'nonce': nonce,
+    'signature': sign
+  }
+}
+//-------------------------- 辅助函数区域 -----------------------------------
+//请求二次封装
+async function Request(o) {
+  if (typeof o === 'string') o = { url: o };
+  try {
+    if (!o?.url) throw new Error('[发送请求] 缺少 url 参数');
+    // type => 因为env中使用method处理post的特殊请求(put/delete/patch), 所以这里使用type
+    let { url: u, type, headers = {}, body: b, params, dataType = 'form', resultType = 'data' } = o;
+    // post请求需要处理params参数(get不需要, env已经处理)
+    const method = type ? type?.toLowerCase() : ('body' in o ? 'post' : 'get');
+    const query = params ? $.queryStr(params) : '';
+    const urlQuery = u.includes('?') ? u.split('?').slice(1).join('?') : '';
+    const signQuery = [urlQuery, query].filter(Boolean).join('&');
+    const url = u.concat(query ? (u.includes('?') ? '&' : '?') + query : '');
+
+    const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 1e4
+    // 根据jsonType处理headers
+    if (dataType === 'json') headers['Content-Type'] = 'application/json;charset=UTF-8';
+    // post请求处理body
+    const body = b && dataType == 'form' ? $.queryStr(b) : $.toStr(b);
+    if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
+      const signPayload = body || signQuery;
+      if (signPayload) {
+        const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
+        const sign = md5(sha1(signature), 32).toString();
+        headers['cfmoto-x-sign'] = sign;
+        headers['signature'] = sign;
+      }
+    }
+    const httpMethod = ['get', 'post'].includes(method) ? method : 'post';
+    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method, headers, params: undefined, ...(method !== 'get' && body && { body }), timeout: timeout }
+    const httpPromise = $.http[httpMethod.toLowerCase()](request)
+      .then(response => resultType == 'data' ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
+      .catch(err => $.log(`❌请求发起失败！原因为：${err}`));
+    // 使用Promise.race来强行加入超时处理
+    return Promise.race([
+      new Promise((_, e) => setTimeout(() => e('当前请求已超时'), timeout)),
+      httpPromise
+    ]);
+  } catch (e) {
+    console.log(`❌请求发起失败！原因为：${e}`);
+  }
+};
+//生成随机数
+function randomInt(n, r) {
+  return Math.round(Math.random() * (r - n) + n)
+};
+//控制台打印
+function DoubleLog(data) {
+  if (data && $.isNode()) {
+    console.log(`${data}`);
+    $.notifyMsg.push(`${data}`)
+  } else if (data) {
+    console.log(`${data}`);
+    $.notifyMsg.push(`${data}`)
+  }
+};
+//调试
+function debug(t, l = 'debug') {
+  if ($.is_debug === 'true') {
+    $.log(`\n-----------${l}------------\n`);
+    $.log(typeof t == "string" ? t : $.toStr(t) || `debug error => t=${t}`);
+    $.log(`\n-----------${l}------------\n`)
+  }
+};
+//汇总通知（summary=汇总标题, detail=每账号明细）
+async function SendMsg(summary, detail) {
+  if (!summary && !detail) return;
+  // Notify=0 关闭通知时只打印
+  if (!(0 < Notify)) {
+    console.log([summary, detail].filter(Boolean).join('\n'));
+    return;
+  }
+
+  if ($.isNode()) {
+    // Node 环境：整合成一条文本推送
+    const text = [summary, detail].filter(Boolean).join("\n");
+    await notify.sendNotify($.name, text);
+  } else {
+    // Surge / QuanX / Loon / Shadowrocket
+    $.msg($.name, summary || "", detail || "");
+  }
+};
+//将请求头转换为小写
+function ObjectKeys2LowerCase(obj) { return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v])) }
+//---------------------- 主程序执行入口 -----------------------------------
+!(async () => {
+  if (typeof $request != "undefined") {
+    await getCookie();
+  } else {
+    const e = envSplitor.find(o => userCookie.includes(o)) || envSplitor[0];
+    userCookie = $.toObj(userCookie) || userCookie.split(e);
+
+    userList.push(...userCookie.map(n => new UserInfo(n)).filter(Boolean));
+
+    userCount = userList.length;
+    console.log(`共找到${userCount}个账号`);
+    if (userList.length > 0) await main();
+  }
+})()
+  .catch(e => $.notifyMsg.push(e.message || e))
+  .finally(async () => {
+    // 构建总通知
+    const total = userList.length;
+    const success = $.successCount || 0;
+    const fail = $.failCount || total - success;
+
+    const summary = `共${total}个账号, 成功${success}个, 失败${fail}个`;
+    const body = $.notifyMsg.length ? $.notifyMsg.join("\n") : "";
+
+    // 抓包模式($request)无正文时不推送，避免空汇总通知
+    if (body || typeof $request === "undefined") await SendMsg(summary, body);
+
+    $.done({ ok: 1 });
+  });
+/** ---------------------------------固定不动区域----------------------------------------- */
+// prettier-ignore
+function randomPattern(pattern,chars="abcdef0123456789"){let result="";for(let char of pattern){if(char==="x"){result+=chars.charAt(Math.floor(Math.random()*chars.length))}else if(char==="X"){result+=chars.charAt(Math.floor(Math.random()*chars.length)).toUpperCase()}else{result+=char}}return result}
+function getUuid(){const uuid=[randomPattern("xxxxxxxx"),randomPattern("xxxx"),randomPattern("4xxx"),randomPattern("xxxx"),randomPattern("xxxxxxxxxxxx")];return uuid.join("-")}
+function getRandomChars(n=16){const chars='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';let result='';for(let i=0;i<n;i++){result+=chars.charAt(Math.floor(Math.random()*chars.length))}return result}
+function md5(t,e){function n(t,e){return t<<e|t>>>32-e}function r(t,e){var n,r,o,i,a;return o=2147483648&t,i=2147483648&e,a=(1073741823&t)+(1073741823&e),(n=1073741824&t)&(r=1073741824&e)?2147483648^a^o^i:n|r?1073741824&a?3221225472^a^o^i:1073741824^a^o^i:a^o^i}function o(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t&e|~t&n}(e,o,i),a),c)),r(n(t,u),e)}function i(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t&n|e&~n}(e,o,i),a),c)),r(n(t,u),e)}function a(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return t^e^n}(e,o,i),a),c)),r(n(t,u),e)}function u(t,e,o,i,a,u,c){return t=r(t,r(r(function(t,e,n){return e^(t|~n)}(e,o,i),a),c)),r(n(t,u),e)}function c(t){var e,n="",r="";for(e=0;e<=3;e++)n+=(r="0"+(t>>>8*e&255).toString(16)).substr(r.length-2,2);return n}var s,l,f,p,d,h,v,y,g,m=Array();for(m=function(t){for(var e,n=t.length,r=n+8,o=16*((r-r%64)/64+1),i=Array(o-1),a=0,u=0;u<n;)a=u%4*8,i[e=(u-u%4)/4]=i[e]|t.charCodeAt(u)<<a,u++;return a=u%4*8,i[e=(u-u%4)/4]=i[e]|128<<a,i[o-2]=n<<3,i[o-1]=n>>>29,i}(t=function(t){t=t.replace(/\r\n/g,"\n");for(var e="",n=0;n<t.length;n++){var r=t.charCodeAt(n);r<128?e+=String.fromCharCode(r):r>127&&r<2048?(e+=String.fromCharCode(r>>6|192),e+=String.fromCharCode(63&r|128)):(e+=String.fromCharCode(r>>12|224),e+=String.fromCharCode(r>>6&63|128),e+=String.fromCharCode(63&r|128))}return e}(t)),h=1732584193,v=4023233417,y=2562383102,g=271733878,s=0;s<m.length;s+=16)l=h,f=v,p=y,d=g,h=o(h,v,y,g,m[s+0],7,3614090360),g=o(g,h,v,y,m[s+1],12,3905402710),y=o(y,g,h,v,m[s+2],17,606105819),v=o(v,y,g,h,m[s+3],22,3250441966),h=o(h,v,y,g,m[s+4],7,4118548399),g=o(g,h,v,y,m[s+5],12,1200080426),y=o(y,g,h,v,m[s+6],17,2821735955),v=o(v,y,g,h,m[s+7],22,4249261313),h=o(h,v,y,g,m[s+8],7,1770035416),g=o(g,h,v,y,m[s+9],12,2336552879),y=o(y,g,h,v,m[s+10],17,4294925233),v=o(v,y,g,h,m[s+11],22,2304563134),h=o(h,v,y,g,m[s+12],7,1804603682),g=o(g,h,v,y,m[s+13],12,4254626195),y=o(y,g,h,v,m[s+14],17,2792965006),h=i(h,v=o(v,y,g,h,m[s+15],22,1236535329),y,g,m[s+1],5,4129170786),g=i(g,h,v,y,m[s+6],9,3225465664),y=i(y,g,h,v,m[s+11],14,643717713),v=i(v,y,g,h,m[s+0],20,3921069994),h=i(h,v,y,g,m[s+5],5,3593408605),g=i(g,h,v,y,m[s+10],9,38016083),y=i(y,g,h,v,m[s+15],14,3634488961),v=i(v,y,g,h,m[s+4],20,3889429448),h=i(h,v,y,g,m[s+9],5,568446438),g=i(g,h,v,y,m[s+14],9,3275163606),y=i(y,g,h,v,m[s+3],14,4107603335),v=i(v,y,g,h,m[s+8],20,1163531501),h=i(h,v,y,g,m[s+13],5,2850285829),g=i(g,h,v,y,m[s+2],9,4243563512),y=i(y,g,h,v,m[s+7],14,1735328473),h=a(h,v=i(v,y,g,h,m[s+12],20,2368359562),y,g,m[s+5],4,4294588738),g=a(g,h,v,y,m[s+8],11,2272392833),y=a(y,g,h,v,m[s+11],16,1839030562),v=a(v,y,g,h,m[s+14],23,4259657740),h=a(h,v,y,g,m[s+1],4,2763975236),g=a(g,h,v,y,m[s+4],11,1272893353),y=a(y,g,h,v,m[s+7],16,4139469664),v=a(v,y,g,h,m[s+10],23,3200236656),h=a(h,v,y,g,m[s+13],4,681279174),g=a(g,h,v,y,m[s+0],11,3936430074),y=a(y,g,h,v,m[s+3],16,3572445317),v=a(v,y,g,h,m[s+6],23,76029189),h=a(h,v,y,g,m[s+9],4,3654602809),g=a(g,h,v,y,m[s+12],11,3873151461),y=a(y,g,h,v,m[s+15],16,530742520),h=u(h,v=a(v,y,g,h,m[s+2],23,3299628645),y,g,m[s+0],6,4096336452),g=u(g,h,v,y,m[s+7],10,1126891415),y=u(y,g,h,v,m[s+14],15,2878612391),v=u(v,y,g,h,m[s+5],21,4237533241),h=u(h,v,y,g,m[s+12],6,1700485571),g=u(g,h,v,y,m[s+3],10,2399980690),y=u(y,g,h,v,m[s+10],15,4293915773),v=u(v,y,g,h,m[s+1],21,2240044497),h=u(h,v,y,g,m[s+8],6,1873313359),g=u(g,h,v,y,m[s+15],10,4264355552),y=u(y,g,h,v,m[s+6],15,2734768916),v=u(v,y,g,h,m[s+13],21,1309151649),h=u(h,v,y,g,m[s+4],6,4149444226),g=u(g,h,v,y,m[s+11],10,3174756917),y=u(y,g,h,v,m[s+2],15,718787259),v=u(v,y,g,h,m[s+9],21,3951481745),h=r(h,l),v=r(v,f),y=r(y,p),g=r(g,d);return 32==e?(c(h)+c(v)+c(y)+c(g)).toLowerCase():(c(v)+c(y)).toLowerCase()}
+function sha1(msg){function rotate_left(n,s){var t4=(n<<s)|(n>>>(32-s));return t4};function lsb_hex(val){var str='';var i;var vh;var vl;for(i=0;i<=6;i+=2){vh=(val>>>(i*4+4))&0x0f;vl=(val>>>(i*4))&0x0f;str+=vh.toString(16)+vl.toString(16)}return str};function cvt_hex(val){var str='';var i;var v;for(i=7;i>=0;i--){v=(val>>>(i*4))&0x0f;str+=v.toString(16)}return str};function Utf8Encode(string){string=string.replace(/\r\n/g,'\n');var utftext='';for(var n=0;n<string.length;n++){var c=string.charCodeAt(n);if(c<128){utftext+=String.fromCharCode(c)}else if((c>127)&&(c<2048)){utftext+=String.fromCharCode((c>>6)|192);utftext+=String.fromCharCode((c&63)|128)}else{utftext+=String.fromCharCode((c>>12)|224);utftext+=String.fromCharCode(((c>>6)&63)|128);utftext+=String.fromCharCode((c&63)|128)}}return utftext};var blockstart;var i,j;var W=new Array(80);var H0=0x67452301;var H1=0xEFCDAB89;var H2=0x98BADCFE;var H3=0x10325476;var H4=0xC3D2E1F0;var A,B,C,D,E;var temp;msg=Utf8Encode(msg);var msg_len=msg.length;var word_array=new Array();for(i=0;i<msg_len-3;i+=4){j=msg.charCodeAt(i)<<24|msg.charCodeAt(i+1)<<16|msg.charCodeAt(i+2)<<8|msg.charCodeAt(i+3);word_array.push(j)}switch(msg_len%4){case 0:i=0x080000000;break;case 1:i=msg.charCodeAt(msg_len-1)<<24|0x0800000;break;case 2:i=msg.charCodeAt(msg_len-2)<<24|msg.charCodeAt(msg_len-1)<<16|0x08000;break;case 3:i=msg.charCodeAt(msg_len-3)<<24|msg.charCodeAt(msg_len-2)<<16|msg.charCodeAt(msg_len-1)<<8|0x80;break}word_array.push(i);while((word_array.length%16)!=14)word_array.push(0);word_array.push(msg_len>>>29);word_array.push((msg_len<<3)&0x0ffffffff);for(blockstart=0;blockstart<word_array.length;blockstart+=16){for(i=0;i<16;i++)W[i]=word_array[blockstart+i];for(i=16;i<=79;i++)W[i]=rotate_left(W[i-3]^W[i-8]^W[i-14]^W[i-16],1);A=H0;B=H1;C=H2;D=H3;E=H4;for(i=0;i<=19;i++){temp=(rotate_left(A,5)+((B&C)|(~B&D))+E+W[i]+0x5A827999)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=20;i<=39;i++){temp=(rotate_left(A,5)+(B^C^D)+E+W[i]+0x6ED9EBA1)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=40;i<=59;i++){temp=(rotate_left(A,5)+((B&C)|(B&D)|(C&D))+E+W[i]+0x8F1BBCDC)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}for(i=60;i<=79;i++){temp=(rotate_left(A,5)+(B^C^D)+E+W[i]+0xCA62C1D6)&0x0ffffffff;E=D;D=C;C=rotate_left(B,30);B=A;A=temp}H0=(H0+A)&0x0ffffffff;H1=(H1+B)&0x0ffffffff;H2=(H2+C)&0x0ffffffff;H3=(H3+D)&0x0ffffffff;H4=(H4+E)&0x0ffffffff}var temp=cvt_hex(H0)+cvt_hex(H1)+cvt_hex(H2)+cvt_hex(H3)+cvt_hex(H4);return temp.toLowerCase()}
+function Env(e,t){class s{constructor(e){this.env=e}send(e,t="GET"){e="string"==typeof e?{url:e}:e;let s=this.get;"POST"===t&&(s=this.post);const i=new Promise((t,i)=>{s.call(this,e,(e,s,o)=>{e?i(e):t(s)})});return e.timeout?((e,t=1e3)=>Promise.race([e,new Promise((e,s)=>{setTimeout(()=>{s(new Error("请求超时"))},t)})]))(i,e.timeout):i}get(e){return this.send.call(this.env,e)}post(e){return this.send.call(this.env,e,"POST")}}return new class{constructor(e,t){this.logLevels={debug:0,info:1,warn:2,error:3},this.logLevelPrefixs={debug:"[DEBUG] ",info:"[INFO] ",warn:"[WARN] ",error:"[ERROR] "},this.logLevel="info",this.name=e,this.http=new s(this),this.data=null,this.dataFile="box.dat",this.logs=[],this.isMute=!1,this.isNeedRewrite=!1,this.logSeparator="\n",this.encoding="utf-8",this.startTime=(new Date).getTime(),Object.assign(this,t),this.log("",`🔔${this.name}, 开始!`)}getEnv(){return"undefined"!=typeof Egern?"Egern":"undefined"!=typeof $environment&&$environment["surge-version"]?"Surge":"undefined"!=typeof $environment&&$environment["stash-version"]?"Stash":"undefined"!=typeof module&&module.exports?"Node.js":"undefined"!=typeof $task?"Quantumult X":"undefined"!=typeof $loon?"Loon":"undefined"!=typeof $rocket?"Shadowrocket":void 0}isNode(){return"Node.js"===this.getEnv()}isQuanX(){return"Quantumult X"===this.getEnv()}isSurge(){return"Surge"===this.getEnv()}isLoon(){return"Loon"===this.getEnv()}isShadowrocket(){return"Shadowrocket"===this.getEnv()}isStash(){return"Stash"===this.getEnv()}isEgern(){return"Egern"===this.getEnv()}toObj(e,t=null){try{return JSON.parse(e)}catch{return t}}toStr(e,t=null,...s){try{return JSON.stringify(e,...s)}catch{return t}}getjson(e,t){let s=t;if(this.getdata(e))try{s=JSON.parse(this.getdata(e))}catch{}return s}setjson(e,t){try{return this.setdata(JSON.stringify(e),t)}catch{return!1}}getScript(e){return new Promise(t=>{this.get({url:e},(e,s,i)=>t(i))})}runScript(e,t){return new Promise(s=>{let i=this.getdata("@chavy_boxjs_userCfgs.httpapi");i=i?i.replace(/\n/g,"").trim():i;let o=this.getdata("@chavy_boxjs_userCfgs.httpapi_timeout");o=o?1*o:20,o=t&&t.timeout?t.timeout:o;const[r,a]=i.split("@"),n={url:`http://${a}/v1/scripting/evaluate`,body:{script_text:e,mock_type:"cron",timeout:o},headers:{"X-Key":r,Accept:"*/*"},policy:"DIRECT",timeout:o};this.post(n,(e,t,i)=>s(i))}).catch(e=>this.logErr(e))}loaddata(){if(!this.isNode())return{};{this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const e=this.path.resolve(this.dataFile),t=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(e),i=!s&&this.fs.existsSync(t);if(!s&&!i)return{};{const i=s?e:t;try{return JSON.parse(this.fs.readFileSync(i))}catch(e){return{}}}}}writedata(){if(this.isNode()){this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const e=this.path.resolve(this.dataFile),t=this.path.resolve(process.cwd(),this.dataFile),s=this.fs.existsSync(e),i=!s&&this.fs.existsSync(t),o=JSON.stringify(this.data);s?this.fs.writeFileSync(e,o):i?this.fs.writeFileSync(t,o):this.fs.writeFileSync(e,o)}}lodash_get(e,t,s=void 0){const i=t.replace(/\[(\d+)\]/g,".$1").split(".");let o=e;for(const e of i)if(o=Object(o)[e],void 0===o)return s;return o}lodash_set(e,t,s){return Object(e)!==e||(Array.isArray(t)||(t=t.toString().match(/[^.[\]]+/g)||[]),t.slice(0,-1).reduce((e,s,i)=>Object(e[s])===e[s]?e[s]:e[s]=(Math.abs(t[i+1])|0)===+t[i+1]?[]:{},e)[t[t.length-1]]=s),e}getdata(e){let t=this.getval(e);if(/^@/.test(e)){const[,s,i]=/^@(.*?)\.(.*?)$/.exec(e),o=s?this.getval(s):"";if(o)try{const e=JSON.parse(o);t=e?this.lodash_get(e,i,""):t}catch(e){t=""}}return t}setdata(e,t){let s=!1;if(/^@/.test(t)){const[,i,o]=/^@(.*?)\.(.*?)$/.exec(t),r=this.getval(i),a=i?"null"===r?null:r||"{}":"{}";try{const t=JSON.parse(a);this.lodash_set(t,o,e),s=this.setval(JSON.stringify(t),i)}catch(t){const r={};this.lodash_set(r,o,e),s=this.setval(JSON.stringify(r),i)}}else s=this.setval(e,t);return s}getval(e){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":return $persistentStore.read(e);case"Quantumult X":return $prefs.valueForKey(e);case"Node.js":return this.data=this.loaddata(),this.data[e];default:return this.data&&this.data[e]||null}}setval(e,t){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":return $persistentStore.write(e,t);case"Quantumult X":return $prefs.setValueForKey(e,t);case"Node.js":return this.data=this.loaddata(),this.data[t]=e,this.writedata(),!0;default:return this.data&&this.data[t]||null}}initGotEnv(e){this.got=this.got?this.got:require("got"),this.cktough=this.cktough?this.cktough:require("tough-cookie"),this.ckjar=this.ckjar?this.ckjar:new this.cktough.CookieJar,e&&(e.headers=e.headers?e.headers:{},e&&(e.headers=e.headers?e.headers:{},void 0===e.headers.cookie&&void 0===e.headers.Cookie&&void 0===e.cookieJar&&(e.cookieJar=this.ckjar)))}get(e,t=()=>{}){switch(e.headers&&(delete e.headers["Content-Type"],delete e.headers["Content-Length"],delete e.headers["content-type"],delete e.headers["content-length"]),e.params&&(e.url+="?"+this.queryStr(e.params)),void 0===e.followRedirect||e.followRedirect||((this.isSurge()||this.isLoon())&&(e["auto-redirect"]=!1),this.isQuanX()&&(e.opts?e.opts.redirection=!1:e.opts={redirection:!1})),this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":default:this.isSurge()&&this.isNeedRewrite&&(e.headers=e.headers||{},Object.assign(e.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.get(e,(e,s,i)=>{!e&&s&&(s.body=i,s.statusCode=s.status?s.status:s.statusCode,s.status=s.statusCode),t(e,s,i)});break;case"Quantumult X":this.isNeedRewrite&&(e.opts=e.opts||{},Object.assign(e.opts,{hints:!1})),$task.fetch(e).then(e=>{const{statusCode:s,statusCode:i,headers:o,body:r,bodyBytes:a}=e;t(null,{status:s,statusCode:i,headers:o,body:r,bodyBytes:a},r,a)},e=>t(e&&e.error||"UndefinedError"));break;case"Node.js":let s=require("iconv-lite");this.initGotEnv(e),this.got(e).on("redirect",(e,t)=>{try{if(e.headers["set-cookie"]){const s=e.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();s&&this.ckjar.setCookieSync(s,null),t.cookieJar=this.ckjar}}catch(e){this.logErr(e)}}).then(e=>{const{statusCode:i,statusCode:o,headers:r,rawBody:a}=e,n=s.decode(a,this.encoding);t(null,{status:i,statusCode:o,headers:r,rawBody:a,body:n},n)},e=>{const{message:i,response:o}=e;t(i,o,o&&s.decode(o.rawBody,this.encoding))})}}post(e,t=()=>{}){const s=e.method?e.method.toLocaleLowerCase():"post";switch(e.body&&e.headers&&!e.headers["Content-Type"]&&!e.headers["content-type"]&&(e.headers["content-type"]="application/x-www-form-urlencoded"),e.headers&&(delete e.headers["Content-Length"],delete e.headers["content-length"]),void 0===e.followRedirect||e.followRedirect||((this.isSurge()||this.isLoon())&&(e["auto-redirect"]=!1),this.isQuanX()&&(e.opts?e.opts.redirection=!1:e.opts={redirection:!1})),this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":default:this.isSurge()&&this.isNeedRewrite&&(e.headers=e.headers||{},Object.assign(e.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient[s](e,(e,s,i)=>{!e&&s&&(s.body=i,s.statusCode=s.status?s.status:s.statusCode,s.status=s.statusCode),t(e,s,i)});break;case"Quantumult X":e.method=s,this.isNeedRewrite&&(e.opts=e.opts||{},Object.assign(e.opts,{hints:!1})),$task.fetch(e).then(e=>{const{statusCode:s,statusCode:i,headers:o,body:r,bodyBytes:a}=e;t(null,{status:s,statusCode:i,headers:o,body:r,bodyBytes:a},r,a)},e=>t(e&&e.error||"UndefinedError"));break;case"Node.js":let i=require("iconv-lite");this.initGotEnv(e);const{url:o,...r}=e;this.got[s](o,r).then(e=>{const{statusCode:s,statusCode:o,headers:r,rawBody:a}=e,n=i.decode(a,this.encoding);t(null,{status:s,statusCode:o,headers:r,rawBody:a,body:n},n)},e=>{const{message:s,response:o}=e;t(s,o,o&&i.decode(o.rawBody,this.encoding))})}}time(e,t=null){const s=t?new Date(t):new Date;let i={"M+":s.getMonth()+1,"d+":s.getDate(),"H+":s.getHours(),"m+":s.getMinutes(),"s+":s.getSeconds(),"q+":Math.floor((s.getMonth()+3)/3),S:s.getMilliseconds()};/(y+)/.test(e)&&(e=e.replace(RegExp.$1,(s.getFullYear()+"").substr(4-RegExp.$1.length)));for(let t in i)new RegExp("("+t+")").test(e)&&(e=e.replace(RegExp.$1,1==RegExp.$1.length?i[t]:("00"+i[t]).substr((""+i[t]).length)));return e}queryStr(e){let t="";for(const s in e){let i=e[s];null!=i&&""!==i&&("object"==typeof i&&(i=JSON.stringify(i)),t+=`${s}=${i}&`)}return t=t.substring(0,t.length-1),t}msg(t=e,s="",i="",o={}){const r=e=>{const{$open:t,$copy:s,$media:i,$mediaMime:o}=e;switch(typeof e){case void 0:return e;case"string":switch(this.getEnv()){case"Surge":case"Stash":case"Egern":default:return{url:e};case"Loon":case"Shadowrocket":return e;case"Quantumult X":return{"open-url":e};case"Node.js":return}case"object":switch(this.getEnv()){case"Surge":case"Stash":case"Shadowrocket":case"Egern":default:{const r={};let a=e.openUrl||e.url||e["open-url"]||t;a&&Object.assign(r,{action:"open-url",url:a});let n=e["update-pasteboard"]||e.updatePasteboard||s;n&&Object.assign(r,{action:"clipboard",text:n});let h=e.mediaUrl||e["media-url"]||i;if(h){let e,t;if(h.startsWith("http"));else if(h.startsWith("data:")){const[s]=h.split(";"),[,i]=h.split(",");e=i,t=s.replace("data:","")}else{e=h,t=(e=>{const t={JVBERi0:"application/pdf",R0lGODdh:"image/gif",R0lGODlh:"image/gif",iVBORw0KGgo:"image/png","/9j/":"image/jpg"};for(var s in t)if(0===e.indexOf(s))return t[s];return null})(h)}Object.assign(r,{"media-url":h,"media-base64":e,"media-base64-mime":o??t})}return Object.assign(r,{"auto-dismiss":e["auto-dismiss"],sound:e.sound}),r}case"Loon":{const s={};let o=e.openUrl||e.url||e["open-url"]||t;o&&Object.assign(s,{openUrl:o});let r=e.mediaUrl||e["media-url"]||i;return r&&Object.assign(s,{mediaUrl:r}),console.log(JSON.stringify(s)),s}case"Quantumult X":{const o={};let r=e["open-url"]||e.url||e.openUrl||t;r&&Object.assign(o,{"open-url":r});let a=e.mediaUrl||e["media-url"]||i;a&&Object.assign(o,{"media-url":a});let n=e["update-pasteboard"]||e.updatePasteboard||s;return n&&Object.assign(o,{"update-pasteboard":n}),console.log(JSON.stringify(o)),o}case"Node.js":return}default:return}};if(!this.isMute)switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":default:$notification.post(t,s,i,r(o));break;case"Quantumult X":$notify(t,s,i,r(o));case"Node.js":}if(!this.isMuteLog){let e=["","==============📣系统通知📣=============="];e.push(t),s&&e.push(s),i&&e.push(i),console.log(e.join("\n")),this.logs=this.logs.concat(e)}}debug(...e){this.logLevels[this.logLevel]<=this.logLevels.debug&&(e.length>0&&(this.logs=[...this.logs,...e]),console.log(`${this.logLevelPrefixs.debug}${e.map(e=>e??String(e)).join(this.logSeparator)}`))}info(...e){this.logLevels[this.logLevel]<=this.logLevels.info&&(e.length>0&&(this.logs=[...this.logs,...e]),console.log(`${this.logLevelPrefixs.info}${e.map(e=>e??String(e)).join(this.logSeparator)}`))}warn(...e){this.logLevels[this.logLevel]<=this.logLevels.warn&&(e.length>0&&(this.logs=[...this.logs,...e]),console.log(`${this.logLevelPrefixs.warn}${e.map(e=>e??String(e)).join(this.logSeparator)}`))}error(...e){this.logLevels[this.logLevel]<=this.logLevels.error&&(e.length>0&&(this.logs=[...this.logs,...e]),console.log(`${this.logLevelPrefixs.error}${e.map(e=>e??String(e)).join(this.logSeparator)}`))}log(...e){e.length>0&&(this.logs=[...this.logs,...e]),console.log(e.map(e=>e??String(e)).join(this.logSeparator))}logErr(e,t){switch(this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":case"Quantumult X":default:this.log("",`❗️${this.name}, 错误!`,t,e);break;case"Node.js":this.log("",`❗️${this.name}, 错误!`,t,void 0!==e.message?e.message:e,e.stack)}}wait(e){return new Promise(t=>setTimeout(t,e))}done(e={}){const t=((new Date).getTime()-this.startTime)/1e3;switch(this.log("",`🔔${this.name}, 结束! 🕛 ${t} 秒`),this.log(),this.getEnv()){case"Surge":case"Loon":case"Stash":case"Shadowrocket":case"Egern":case"Quantumult X":default:$done(e);break;case"Node.js":process.exit(0)}}}(e,t)}
