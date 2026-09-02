@@ -581,11 +581,20 @@ async function getCookie() {
   $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
 }
 function getSign(type, params = {}, body = '') {
-  const appConfig = {
-    // 2026-08-28 HAR 确认：H5 端 appId/appSecret 已轮换（旧 azRnLvxl/76d9... 会被拒绝 → 430/permit error）
+  // 先读取用户在看板配置页保存的签名密钥（zeeho_config），没有则用默认值
+  let appConfig = {
     appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
     appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
   }
+  try {
+    const cfgRaw = $.getdata("zeeho_config");
+    if (cfgRaw) {
+      const cfg = JSON.parse(cfgRaw);
+      const c = cfg[type] || cfg.app;
+      if (c && c.appId) appConfig.appId = c.appId;
+      if (c && c.appSecret) appConfig.appSecret = c.appSecret;
+    }
+  } catch(e) {}
   const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
   const timestamp = new Date().getTime()
   const nonce = type === "h5" ? getUuid() : timestamp + getRandomChars()
