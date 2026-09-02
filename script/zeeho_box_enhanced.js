@@ -1191,19 +1191,23 @@ function deleteAccount(idx) {
   if (row) { row.remove(); showToast('已删除（需点击保存）'); }
 }
 function saveAccounts() {
+  // 关键修复：保存前先移除 token-hidden 样式，确保 Loon WebView 能正确读取 value
+  var hiddenInputs = document.querySelectorAll('input.token-hidden');
+  for (var i = 0; i < hiddenInputs.length; i++) {
+    hiddenInputs[i].classList.remove('token-hidden');
+  }
   var rows = document.querySelectorAll('.acc-row');
   var list = [];
-  var detail = [];
   rows.forEach(function(row) {
     var idx = row.getAttribute('data-idx');
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
-    var tokenVal = token ? token.value.trim() : '';
+    var tokenVal = token ? String(token.value || '').trim() : '';
     if (tokenVal) {
-      var uname = name ? name.value.trim() : '';
-      list.push({ userName: uname, userId: uid ? uid.value : '', token: tokenVal, userAgent: '' });
-      detail.push(uname + '(' + tokenVal.substring(0,8) + '...)');
+      var uname = name ? String(name.value || '').trim() : '';
+      var uidVal = uid ? String(uid.value || '') : '';
+      list.push({ userName: uname, userId: uidVal, token: tokenVal, userAgent: '' });
     }
   });
   if (list.length === 0) {
@@ -1212,7 +1216,7 @@ function saveAccounts() {
   }
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('已保存'+list.length+'个: '+detail.join(', ')); setTimeout(function(){ location.reload(); }, 1500); } else { showToast('保存失败', 'err'); } })
+    .then(function(d){ if(d.ok){ showToast('账号已保存（'+list.length+'个）'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 </script>
