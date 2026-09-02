@@ -276,7 +276,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:36px;height:36px;border-radius:10px;background:#F5F5F5;border:1px solid #D8D8D8;display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:19px;font-family:Arial Black,Arial,sans-serif;flex-shrink:0}
+.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -388,7 +388,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:36px;height:36px;border-radius:10px;background:#F5F5F5;border:1px solid #D8D8D8;display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:19px;font-family:Arial Black,Arial,sans-serif;flex-shrink:0}
+.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .nav-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s;font-family:inherit}
