@@ -1193,18 +1193,26 @@ function deleteAccount(idx) {
 function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
   var list = [];
+  var detail = [];
   rows.forEach(function(row) {
     var idx = row.getAttribute('data-idx');
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
-    if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+    var tokenVal = token ? token.value.trim() : '';
+    if (tokenVal) {
+      var uname = name ? name.value.trim() : '';
+      list.push({ userName: uname, userId: uid ? uid.value : '', token: tokenVal, userAgent: '' });
+      detail.push(uname + '(' + tokenVal.substring(0,8) + '...)');
     }
   });
+  if (list.length === 0) {
+    showToast('没有有效Token，未保存', 'err');
+    return;
+  }
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('账号已保存（'+list.length+'个）'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
+    .then(function(d){ if(d.ok){ showToast('已保存'+list.length+'个: '+detail.join(', ')); setTimeout(function(){ location.reload(); }, 1500); } else { showToast('保存失败', 'err'); } })
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 </script>
