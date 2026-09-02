@@ -381,6 +381,7 @@ async function fetchVehicleList(acc, cfg) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
+      "user_id": acc.userId || "",
       ...signH
     });
     if (res.code == "10000" && Array.isArray(res.data)) {
@@ -404,6 +405,7 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
+      "user_id": acc.userId || "",
       ...signH
     });
     if (res.code == "10000" && res.data) {
@@ -433,6 +435,7 @@ async function fetchTirePressure(acc, cfg, vinNo) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
+      "user_id": acc.userId || "",
       ...signH
     });
     if (res.code == "10000" && res.data) {
@@ -478,10 +481,10 @@ async function fetchRideInfo(acc, cfg, vinNo) {
     const month = new Date().getFullYear() + "." + String(new Date().getMonth()+1).padStart(2,"0");
     const [homeRes, myRes] = await Promise.all([
       httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/homeRideInfo?vinNo=${encodeURIComponent(vinNo)}`, {
-        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
       }),
       httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/myRideInfo?vinNo=${encodeURIComponent(vinNo)}&month=${month}`, {
-        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
       })
     ]);
     const h = homeRes?.data || homeRes || {};
@@ -504,7 +507,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
     const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`, {
-      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
     });
     if (res.code == "10000" && res.data) {
       return String(res.data.chargeStateStr || "未充电");
@@ -568,8 +571,14 @@ async function fetchAccountData(acc, cfg) {
     todayScore: 0,
     signCount: 0,
     last7: [],
-    error: null
+    error: null,
+    vehicle: { hasVehicle: false }
   };
+
+  // 0. 车辆信息（独立获取，不影响其他功能）
+  try {
+    result.vehicle = await fetchVehicleInfo(acc, cfg);
+  } catch(e) { result.vehicle = { hasVehicle: false }; }
 
   // 1. 积分
   try {
@@ -641,11 +650,6 @@ async function fetchAccountData(acc, cfg) {
     result.tokenReason = tokenCheck.reason || null;
     if (tokenCheck.valid && tokenCheck.userName) result.userName = tokenCheck.userName;
   } catch(e) { result.tokenValid = true; }
-  // 车辆信息
-  try {
-    const vehicle = await fetchVehicleInfo(acc, cfg);
-    result.vehicle = vehicle;
-  } catch(e) { result.vehicle = { hasVehicle: false }; }
   return result;
 }
 
