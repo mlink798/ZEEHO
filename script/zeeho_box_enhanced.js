@@ -4,7 +4,7 @@
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
-图标: https://github.com/mlink798/ZEEHO/blob/main/ZEEHO.png
+图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
 
 [Script]
 # 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
@@ -335,7 +335,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.summary-row{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.acc-kpi{grid-template-columns:repeat(2,1fr)}.topbar{padding:12px 14px}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
+  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
   <div class="top-actions">
     <div class="stat-chip"><span class="dot"></span><span id="signedInfo">${signedCount}/${data.length} 已签到</span></div>
     <a href="/config" class="nav-btn">配置</a>
@@ -426,7 +426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.form-grid{grid-template-columns:1fr}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
+  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
   <div><a href="/" class="nav-btn primary">返回看板</a></div>
 </div>
 <div class="container">
