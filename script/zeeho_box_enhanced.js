@@ -373,6 +373,30 @@ function getPostIdFromData(data) {
 
 
 // ========== 车辆信息获取 ==========
+async function fetchServiceRechargeDetail(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("h5", { vinNo: vinNo }, '', cfg);
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      ...signH
+    };
+    if (acc.userId) headers["user_id"] = String(acc.userId);
+    const res = await httpGet(`https://h5.zeehoev.com/cfmotoserverapp/app/service/recharge/vehicle/detail?vinNo=${encodeURIComponent(vinNo)}`, headers);
+    if (res.code == "10000" && res.data) {
+      return {
+        rechargeEndDate: String(res.data.rechargeEndDate || ""),
+        lastUseDate: Number(res.data.lastUseDate) || 0,
+        serviceRechargeStatus: String(res.data.serviceRechargeStatus || ""),
+        vehicleName: String(res.data.vehicleName || "")
+      };
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
 async function fetchVehicleList(acc, cfg) {
   try {
     const token = cleanToken(acc.token);
@@ -979,6 +1003,10 @@ function renderConfig(accounts, cfg) {
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
       </div>
+      <div class="vin-row" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm" onclick="getVehicleVin(${idx})" style="padding:5px 12px;font-size:11px">获取车架号</button>
+        <span id="vin_result_${idx}" style="font-size:11px;color:#64748B"></span>
+      </div>
     </div>`).join('');
 
   return `<!DOCTYPE html>
@@ -1127,7 +1155,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div><div class="vin-row" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-sm" onclick="getVehicleVin('+idx+')" style="padding:5px 12px;font-size:11px">获取车架号</button><span id="vin_result_'+idx+'" style="font-size:11px;color:#64748B"></span></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1138,6 +1166,46 @@ function addAccount() {
 function deleteAccount(idx) {
   var row = document.querySelector('.acc-row[data-idx="'+idx+'"]');
   if (row) { row.remove(); showToast('已删除（需点击保存）'); }
+}
+function getVehicleVin(idx) {
+  var tokenInput = document.getElementById('acc_token_' + idx);
+  var uidInput = document.getElementById('acc_uid_' + idx);
+  var resultEl = document.getElementById('vin_result_' + idx);
+  var token = tokenInput ? tokenInput.value.trim() : '';
+  var userId = uidInput ? uidInput.value.trim() : '';
+  if (!token) {
+    resultEl.textContent = '请先输入Token';
+    resultEl.style.color = '#EF4444';
+    return;
+  }
+  resultEl.textContent = '获取中...';
+  resultEl.style.color = '#64748B';
+  fetch('/api/get-vehicle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: token, userId: userId}) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok && d.vehicles && d.vehicles.length > 0) {
+        var html = d.vehicles.map(function(v){
+          var info = v.name + ' (' + v.vinNo + ')';
+          if (v.rechargeEndDate) {
+            info += ' · 服务到期: ' + v.rechargeEndDate;
+            if (v.lastUseDate) info += ' (剩余' + v.lastUseDate + '天)';
+          }
+          return info;
+        }).join('<br>');
+        resultEl.innerHTML = html;
+        resultEl.style.color = '#0891B2';
+      } else if (d.ok) {
+        resultEl.textContent = '该账号未绑定车辆';
+        resultEl.style.color = '#F59E0B';
+      } else {
+        resultEl.textContent = '获取失败: ' + (d.error || '未知错误');
+        resultEl.style.color = '#EF4444';
+      }
+    })
+    .catch(function(){
+      resultEl.textContent = '获取失败';
+      resultEl.style.color = '#EF4444';
+    });
 }
 function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
@@ -1199,6 +1267,29 @@ function sendResp(status, headers, body) {
     const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
+    return;
+  }
+
+  // API: 获取账号车辆列表（车架号+服务到期时间）
+  if (method === "POST" && path === "/api/get-vehicle") {
+    const body = parseBody($request);
+    const cfg = getConfig();
+    const acc = { token: body.token || "", userId: body.userId || "", userName: "" };
+    try {
+      const vehicles = await fetchVehicleList(acc, cfg);
+      // 对每辆车获取服务到期时间
+      for (const v of vehicles) {
+        const detail = await fetchServiceRechargeDetail(acc, cfg, v.vinNo);
+        if (detail) {
+          v.rechargeEndDate = detail.rechargeEndDate;
+          v.lastUseDate = detail.lastUseDate;
+          if (detail.vehicleName) v.name = detail.vehicleName;
+        }
+      }
+      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, vehicles: vehicles }));
+    } catch(e) {
+      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, error: String(e) }));
+    }
     return;
   }
 
