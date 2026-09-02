@@ -972,9 +972,9 @@ function renderConfig(accounts, cfg) {
         <span class="acc-row-title">账号 ${idx + 1}</span>
         <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
       </div>
-      <input type="hidden" id="acc_uid_${idx}" value="${a.userId || ''}">
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
+        <div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..."></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
@@ -1127,7 +1127,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..."></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1147,9 +1147,8 @@ function saveAccounts() {
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
-    var tokenVal = token ? String(token.value || '').trim() : '';
-    if (tokenVal) {
-      list.push({ userName: name ? String(name.value || '') : '', userId: uid ? String(uid.value || '') : '', token: tokenVal, userAgent: '' });
+    if (token && token.value.trim()) {
+      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
     }
   });
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
@@ -1197,16 +1196,7 @@ function sendResp(status, headers, body) {
   // API: 保存账号
   if (method === "POST" && path === "/api/save-accounts") {
     const body = parseBody($request);
-    const rawList = Array.isArray(body.accounts) ? body.accounts : [];
-    // 强制 userId 和 token 转字符串，防止大数字精度丢失
-    const list = rawList.map(function(a) {
-      return {
-        userName: String(a.userName || ''),
-        userId: String(a.userId || ''),
-        token: String(a.token || ''),
-        userAgent: String(a.userAgent || '')
-      };
-    });
+    const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
     return;
