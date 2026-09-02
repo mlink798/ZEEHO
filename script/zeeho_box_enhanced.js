@@ -121,10 +121,21 @@ function getSign(type, params = {}, body = '', cfg) {
 // ========== HTTP 请求 ==========
 function httpGet(url, headers) {
   return new Promise((resolve) => {
-    $httpClient.get({ url, headers }, (err, resp, body) => {
-      if (err) { resolve({ error: String(err) }); return; }
-      try { resolve(JSON.parse(body)); } catch { resolve({ error: "parse error", raw: body }); }
-    });
+    const isQX = typeof $task !== "undefined";
+    if (isQX) {
+      $task.fetch({ url, headers, method: "GET" }).then(
+        function(resp) {
+          try { resolve(JSON.parse(resp.body)); }
+          catch(e) { resolve({ error: "parse error", raw: resp.body }); }
+        },
+        function(err) { resolve({ error: String(err && err.error || err || "request failed") }); }
+      );
+    } else {
+      $httpClient.get({ url, headers }, function(err, resp, body) {
+        if (err) { resolve({ error: String(err) }); return; }
+        try { resolve(JSON.parse(body)); } catch(e) { resolve({ error: "parse error", raw: body }); }
+      });
+    }
   });
 }
 
