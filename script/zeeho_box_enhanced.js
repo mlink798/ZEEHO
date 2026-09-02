@@ -994,6 +994,7 @@ function renderConfig(accounts, cfg) {
         <span class="acc-row-title">账号 ${idx + 1}</span>
         <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
       </div>
+      <input type="hidden" id="acc_uid_${idx}" value="${a.userId || ''}">
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
       </div>
@@ -1104,7 +1105,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       <button class="btn btn-sm" onclick="addAccount()">+ 添加账号</button>
     </div>
     <div class="panel-body">
-      <input type="hidden" id="existingAccountsData" value='${JSON.stringify(accounts)}'><div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
+      <div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
       <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。用户ID可在抓包响应 <code>data.id</code> 中找到。</div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveAccounts()">保存账号</button>
@@ -1176,7 +1177,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..."></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><div class="token-input-wrap"><input type="password" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px;padding-right:40px"><button type="button" class="token-toggle" onclick="toggleToken('+idx+')">显示</button></div></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
