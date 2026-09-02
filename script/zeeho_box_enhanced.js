@@ -276,7 +276,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0}
+.brand-mark{width:36px;height:36px;border-radius:10px;background:#F5F5F5;border:1px solid #D8D8D8;display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:19px;font-family:Arial Black,Arial,sans-serif;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -335,7 +335,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.summary-row{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.acc-kpi{grid-template-columns:repeat(2,1fr)}.topbar{padding:12px 14px}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAQAAAAAYLlVAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAAmJLR0QA/4ePzL8AAAAHdElNRQfqCQITMB+QPB6RAAADnElEQVRo3s2ZT2hcRRzHP282m+w2mzRRTEy0pW1MRShCAwHFZpNTEUQFU3qIObQFUQ+uQltKqVAVTSgqREJB2tBTeipBQXNpJbLNpbAkKUWp/XupkjS16UKCeUnc9/OQ1WY37yWzb99m/O5leTPz+31m3puZ38zPIkcCUZppZTfP8TRPECNCmBAWhUvIsITNHDNMcZsJUtxiPteU9bg2EKWdbtqop8KHw/W0wH1GGSTJPPk9EgRplgFJS6mVlgFpluUOr3BvSVxSJXf+r1ISF0tyeh+X6xvmXkTkusSzo5Ad/I3r/eNRWH4RgkRlYMPdi4gMSFRQQDudJfjm11cn7aCI0E2NEYAauokodtJmxD1AGzsVrdQbA6inVdFSklVPTxW0KHYYcw+wQ9FoFKBRUWsUoFYRMwoQU0SMAkQUYaMAYUscX9FOUBJLZPXTDAv+LRKm3NVGBSGX+mVuRiY4xYKvgXGo4wgvYHOGn1ZYECo5zouuxC76USKCr99mOS2Lsih9UpVXUi0jrnuycoOyfH4WVXzGOyjO8Smzmm2UZj0NVXKC9whxno95pN0qMIAIR0gQ5gLH+LOAdgEBlJPgKBG+5zBTBbUs06nUwt41yx228jaVzDJFV3ayOQzza1AAL9Gr1Zsq3v/vf4Y/ggN4wIRHiRCiiRjC7zzImTsZHmpBawH8wIhn2X56gDES3MibvHPBAdjYHiVvcJwarvEBV7TcrVZRs+BV+tjCbyR8uy8KoIM+tnOXD0kW0QnfAC/Tz/Pc4yMuFuFe8xsI54VNDrvoZxcP+YSfibnuHILN30EBvMbhPOPPsB0IcYgDHhtXhi+4FBRAI3tcn9fwimcbR/PApQUwRm/2SsVhG2+xiTRDTK2xaVs4/KIF4BqQDEvUI+B4Vr4TR2blqJQXGKoUFJB4qYGveRObr+hnsZCGa6gAgKc4xT4W+YYvPVfGEgLU8jldZPiWHv4KzL0HQN4tHlDNSQ7icJaT2tGenlxnwZN05L3j13mXMFdJstvX4inEPO6BXA8mS8znjIHFJsqAeZ+nhZU2VgMYPpopMgbdQ0axZBRgSQU4pf3IVpqhW6k0p5gxCjCjmDQKMKm4axTgjmK8iOuQYmUzoUhx3xjANCnFTUaNAYxyU2EzSNqI+zSD2ApIMmQEYIgk/4OklfG0XRbBZOISTKZu3ZLXcepKlLye5nJ+8npVEjubvm+hiQZqA0rfP2KSO4y7pe//AYAOjiHWztZeAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTA5LTAyVDE5OjQ2OjIyKzAwOjAwVWl6wwAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wOS0wMlQxOTo0NjoyMiswMDowMCQ0wn8AAAAASUVORK5CYII=" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
+  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
   <div class="top-actions">
     <div class="stat-chip"><span class="dot"></span><span id="signedInfo">${signedCount}/${data.length} 已签到</span></div>
     <a href="/config" class="nav-btn">配置</a>
@@ -388,7 +388,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0}
+.brand-mark{width:36px;height:36px;border-radius:10px;background:#F5F5F5;border:1px solid #D8D8D8;display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:19px;font-family:Arial Black,Arial,sans-serif;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .nav-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s;font-family:inherit}
@@ -426,7 +426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.form-grid{grid-template-columns:1fr}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAQAAAAAYLlVAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAAmJLR0QA/4ePzL8AAAAHdElNRQfqCQITMB+QPB6RAAADnElEQVRo3s2ZT2hcRRzHP282m+w2mzRRTEy0pW1MRShCAwHFZpNTEUQFU3qIObQFUQ+uQltKqVAVTSgqREJB2tBTeipBQXNpJbLNpbAkKUWp/XupkjS16UKCeUnc9/OQ1WY37yWzb99m/O5leTPz+31m3puZ38zPIkcCUZppZTfP8TRPECNCmBAWhUvIsITNHDNMcZsJUtxiPteU9bg2EKWdbtqop8KHw/W0wH1GGSTJPPk9EgRplgFJS6mVlgFpluUOr3BvSVxSJXf+r1ISF0tyeh+X6xvmXkTkusSzo5Ad/I3r/eNRWH4RgkRlYMPdi4gMSFRQQDudJfjm11cn7aCI0E2NEYAauokodtJmxD1AGzsVrdQbA6inVdFSklVPTxW0KHYYcw+wQ9FoFKBRUWsUoFYRMwoQU0SMAkQUYaMAYUscX9FOUBJLZPXTDAv+LRKm3NVGBSGX+mVuRiY4xYKvgXGo4wgvYHOGn1ZYECo5zouuxC76USKCr99mOS2Lsih9UpVXUi0jrnuycoOyfH4WVXzGOyjO8Smzmm2UZj0NVXKC9whxno95pN0qMIAIR0gQ5gLH+LOAdgEBlJPgKBG+5zBTBbUs06nUwt41yx228jaVzDJFV3ayOQzza1AAL9Gr1Zsq3v/vf4Y/ggN4wIRHiRCiiRjC7zzImTsZHmpBawH8wIhn2X56gDES3MibvHPBAdjYHiVvcJwarvEBV7TcrVZRs+BV+tjCbyR8uy8KoIM+tnOXD0kW0QnfAC/Tz/Pc4yMuFuFe8xsI54VNDrvoZxcP+YSfibnuHILN30EBvMbhPOPPsB0IcYgDHhtXhi+4FBRAI3tcn9fwimcbR/PApQUwRm/2SsVhG2+xiTRDTK2xaVs4/KIF4BqQDEvUI+B4Vr4TR2blqJQXGKoUFJB4qYGveRObr+hnsZCGa6gAgKc4xT4W+YYvPVfGEgLU8jldZPiWHv4KzL0HQN4tHlDNSQ7icJaT2tGenlxnwZN05L3j13mXMFdJstvX4inEPO6BXA8mS8znjIHFJsqAeZ+nhZU2VgMYPpopMgbdQ0axZBRgSQU4pf3IVpqhW6k0p5gxCjCjmDQKMKm4axTgjmK8iOuQYmUzoUhx3xjANCnFTUaNAYxyU2EzSNqI+zSD2ApIMmQEYIgk/4OklfG0XRbBZOISTKZu3ZLXcepKlLye5nJ+8npVEjubvm+hiQZqA0rfP2KSO4y7pe//AYAOjiHWztZeAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTA5LTAyVDE5OjQ2OjIyKzAwOjAwVWl6wwAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wOS0wMlQxOTo0NjoyMiswMDowMCQ0wn8AAAAASUVORK5CYII=" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
+  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
   <div><a href="/" class="nav-btn primary">返回看板</a></div>
 </div>
 <div class="container">
