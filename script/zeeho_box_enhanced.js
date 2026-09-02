@@ -1,6 +1,6 @@
 /*
-#!name=极核 ZEEHO 签到看板
-#!desc=多账号实时数据看板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
+#!name=极核 ZEEHO 签到面板
+#!desc=多账号实时数据面板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
@@ -163,40 +163,50 @@ async function fetchAccountData(acc, cfg) {
     }
   } catch(e) { result.error = "积分获取失败"; }
 
-  // 2. 签到状态
+  // 2. 签到状态（跨月：并行请求当月+上月，合并计算连签，避免1号重置）
   try {
-    const signH = getSign("h5", { month }, '', cfg);
-    const signUrl = `https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`;
-    const signRes = await httpGet(signUrl, {
+    const now = new Date();
+    const curMonth = now.getFullYear() + "-" + (now.getMonth() + 1);
+    const lastDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = lastDate.getFullYear() + "-" + (lastDate.getMonth() + 1);
+    const baseHeaders = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
-      "user_id": userId,
-      ...signH
-    });
-    if (signRes.code == "10000" && signRes.data) {
-      const list = signRes.data.nowSignDetailVos || [];
-      result.signCount = Number(signRes.data.signCount) || 0;
-      const todayEntry = list.find(x => x.createDate === today);
-      result.signedToday = !!(todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5));
-      result.todayScore = todayEntry ? (Number(todayEntry.integralScore) || 0) : 0;
-      const todayIdx = list.findIndex(x => x.createDate === today);
-      let cont = 0;
+      "user_id": userId
+    };
+    const [curRes, lastRes] = await Promise.all([
+      httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${curMonth}`, { ...baseHeaders, ...getSign("h5", { month: curMonth }, '', cfg) }),
+      httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${lastMonth}`, { ...baseHeaders, ...getSign("h5", { month: lastMonth }, '', cfg) })
+    ]);
+    const lastList = (lastRes.code == "10000" && lastRes.data) ? (lastRes.data.nowSignDetailVos || []) : [];
+    const curList = (curRes.code == "10000" && curRes.data) ? (curRes.data.nowSignDetailVos || []) : [];
+    const list = [...lastList, ...curList];
+    if (curRes.code == "10000" && curRes.data) {
+      result.signCount = Number(curRes.data.signCount) || 0;
+    }
+    const todayEntry = curList.find(x => x.createDate === today);
+    result.signedToday = !!(todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5));
+    result.todayScore = todayEntry ? (Number(todayEntry.integralScore) || 0) : 0;
+    // 跨月连签：从今天往前数，遇到断签停止（不按月重置）
+    const todayIdx = list.findIndex(x => x.createDate === today);
+    let cont = 0;
+    if (todayIdx >= 0) {
       for (let i = todayIdx; i >= 0; i--) {
         const st = list[i]?.signStatue;
         if (st == 3 || st == 5) cont++; else break;
       }
-      result.continueDays = cont;
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const ds = d.toISOString().slice(0, 10);
-        const entry = list.find(x => x.createDate === ds);
-        result.last7.push({
-          date: ds.slice(5),
-          signed: !!(entry && (entry.signStatue == 3 || entry.signStatue == 5)),
-          isToday: i === 0
-        });
-      }
+    }
+    result.continueDays = cont;
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      const entry = list.find(x => x.createDate === ds);
+      result.last7.push({
+        date: ds.slice(5),
+        signed: !!(entry && (entry.signStatue == 3 || entry.signStatue == 5)),
+        isToday: i === 0
+      });
     }
   } catch(e) { if (!result.error) result.error = "签到状态获取失败"; }
 
@@ -218,8 +228,11 @@ function renderDashboard(accounts, data, cfg, updateTime) {
   const signedCount = data.filter(a => a.signedToday).length;
 
   const cards = data.map((a, idx) => {
-    const blindPct = Math.min(100, Math.round((a.continueDays / 30) * 100));
-    const blindRemain = Math.max(0, 30 - a.continueDays);
+    // 盲盒30天一轮，满30第二天重置为第1天
+    const blindDay = a.continueDays === 0 ? 0 : ((a.continueDays - 1) % 30) + 1;
+    const blindRound = a.continueDays === 0 ? 0 : Math.ceil(a.continueDays / 30);
+    const blindPct = Math.round((blindDay / 30) * 100);
+    const blindRemain = 30 - blindDay;
     const last7 = a.last7.map(d => `
       <div class="day-cell ${d.signed ? 'day-ok' : 'day-miss'} ${d.isToday ? 'day-today' : ''}" title="${d.date}">
         <span class="day-num">${d.date.slice(3)}</span>
@@ -244,7 +257,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="kpi-item"><div class="kpi-val num" style="color:#8B5CF6">${blindRemain}</div><div class="kpi-lbl">距盲盒</div></div>
       </div>
       <div class="blind-section">
-        <div class="blind-label"><span>盲盒进度</span><span class="num">${a.continueDays}/30 · ${blindPct}%</span></div>
+        <div class="blind-label"><span>盲盒进度（第${blindRound}轮）</span><span class="num">${blindDay}/30 · ${blindPct}%</span></div>
         <div class="blind-bar"><div class="blind-fill" style="width:${blindPct}%"></div></div>
       </div>
       <div class="week-section">
@@ -256,14 +269,14 @@ function renderDashboard(accounts, data, cfg, updateTime) {
 
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>极核 ZEEHO 签到看板</title>
+<title>极核 ZEEHO 签到面板</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#F0F4F8;color:#0F172A;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px}
+.brand-mark{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -322,7 +335,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.summary-row{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.acc-kpi{grid-template-columns:repeat(2,1fr)}.topbar{padding:12px 14px}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO 签到看板</h1><p>BoxJS 增强版 · ${data.length} 个账号 · 实时数据</p></div></div>
+  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO 签到面板</h1><p>${data.length} 个账号 · 实时数据</p></div></div>
   <div class="top-actions">
     <div class="stat-chip"><span class="dot"></span><span id="signedInfo">${signedCount}/${data.length} 已签到</span></div>
     <a href="/config" class="nav-btn">配置</a>
@@ -375,7 +388,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .num{font-variant-numeric:tabular-nums}
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:34px;height:34px;background:linear-gradient(135deg,#0891B2,#0E7490);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px}
+.brand-mark{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0}
 .brand-text h1{font-size:15px;font-weight:700}
 .brand-text p{font-size:11px;color:#94A3B8;margin-top:1px}
 .nav-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s;font-family:inherit}
@@ -413,7 +426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @media(max-width:640px){.form-grid{grid-template-columns:1fr}.container{padding:14px 12px 30px}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><div class="brand-mark">Z</div><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
+  <div class="brand"><img src="https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png" class="brand-mark"><div class="brand-text"><h1>极核 ZEEHO · 配置</h1><p>签名密钥 & 账号管理</p></div></div>
   <div><a href="/" class="nav-btn primary">返回看板</a></div>
 </div>
 <div class="container">
