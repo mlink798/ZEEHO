@@ -953,17 +953,6 @@ function showSigninResult(d) {
 function closeModal() {
   document.getElementById('signinModal').style.display = 'none';
 }
-function toggleSignConfig() {
-  var body = document.getElementById('signConfigBody');
-  var arrow = document.getElementById('signConfigArrow');
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
-    arrow.textContent = '▲';
-  } else {
-    body.style.display = 'none';
-    arrow.textContent = '▼';
-  }
-}
 function showToast(msg, type) {
   var t = document.createElement('div');
   t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:10000;'+(type==='err'?'background:#EF4444;color:#fff':'background:#10B981;color:#fff');
@@ -1048,10 +1037,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   <!-- 签名配置 -->
   <div class="panel">
-    <div class="panel-head" style="cursor:pointer" onclick="toggleSignConfig()">
-      <div class="panel-title"><span class="bar"></span>签名密钥配置 <span id="signConfigArrow" style="font-size:12px;color:#94A3B8;margin-left:6px">▼</span></div>
+    <div class="panel-head">
+      <div class="panel-title"><span class="bar"></span>签名密钥配置</div>
     </div>
-    <div class="panel-body" id="signConfigBody" style="display:none">
+    <div class="panel-body">
       <div class="form-grid">
         <div class="form-item"><label>App端 appId</label><input type="text" id="cfg_app_id" value="${cfg.app.appId}"></div>
         <div class="form-item"><label>App端 appSecret</label><input type="text" id="cfg_app_secret" value="${cfg.app.appSecret}" style="font-family:monospace;font-size:11px"></div>
@@ -1099,17 +1088,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 </div>
 <div id="toast" class="toast"></div>
 <script>
-function toggleSignConfig() {
-  var body = document.getElementById('signConfigBody');
-  var arrow = document.getElementById('signConfigArrow');
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
-    arrow.textContent = '▲';
-  } else {
-    body.style.display = 'none';
-    arrow.textContent = '▼';
-  }
-}
 function showToast(msg, type) {
   var t = document.getElementById('toast');
   t.textContent = msg;
@@ -1169,8 +1147,9 @@ function saveAccounts() {
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
-    if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+    var tokenVal = token ? String(token.value || '').trim() : '';
+    if (tokenVal) {
+      list.push({ userName: name ? String(name.value || '') : '', userId: uid ? String(uid.value || '') : '', token: tokenVal, userAgent: '' });
     }
   });
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
@@ -1218,7 +1197,16 @@ function sendResp(status, headers, body) {
   // API: 保存账号
   if (method === "POST" && path === "/api/save-accounts") {
     const body = parseBody($request);
-    const list = Array.isArray(body.accounts) ? body.accounts : [];
+    const rawList = Array.isArray(body.accounts) ? body.accounts : [];
+    // 强制 userId 和 token 转字符串，防止大数字精度丢失
+    const list = rawList.map(function(a) {
+      return {
+        userName: String(a.userName || ''),
+        userId: String(a.userId || ''),
+        token: String(a.token || ''),
+        userAgent: String(a.userAgent || '')
+      };
+    });
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
     return;
