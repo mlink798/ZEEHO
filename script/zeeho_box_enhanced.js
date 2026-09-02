@@ -691,7 +691,6 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="acc-avatar">${(a.userName || '?').charAt(0).toUpperCase()}</div>
         <div class="acc-info">
           <div class="acc-name">${a.userName}</div>
-          <div class="acc-uid num">ID ${a.userId} ${a.vehicle && !a.vehicle.hasVehicle ? '<span style="color:#F59E0B">·无车辆</span>' : ''}</div>
         </div>
         <div class="acc-badge ${a.signedToday ? 'badge-ok' : 'badge-miss'}">${a.signedToday ? '已签到' : '未签到'}</div>
         <div class="token-badge ${a.tokenValid === false ? 'token-invalid' : 'token-valid'}" title="${a.tokenValid === false ? (a.tokenReason || 'token失效') : 'token正常'}">${a.tokenValid === false ? '⚠️失效' : '✓正常'}</div>
@@ -712,6 +711,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="week-label">近 7 天签到</div>
         <div class="week-grid">${last7}</div>
       </div>
+      ${a.vehicle && !a.vehicle.hasVehicle ? `<div class="no-vehicle-tip">🚗 该账号未绑定车辆</div>` : ''}
       ${a.vehicle && a.vehicle.hasVehicle ? `
       <div class="vehicle-section">
         <div class="vehicle-label">
@@ -823,6 +823,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tire-icon{font-size:12px}
 .tire-temp{color:#0EA5E9;font-size:10px}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.no-vehicle-tip{margin-top:10px;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:11px;color:#B45309;text-align:center}
 .footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;margin-top:10px}
 .footer a{color:#0891B2;text-decoration:none}
 .empty-state{text-align:center;padding:60px 20px;color:#94A3B8}
@@ -952,6 +953,28 @@ function showSigninResult(d) {
 function closeModal() {
   document.getElementById('signinModal').style.display = 'none';
 }
+function toggleToken(idx) {
+  var input = document.getElementById('acc_token_' + idx);
+  var btn = event.target;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '隐藏';
+  } else {
+    input.type = 'password';
+    btn.textContent = '显示';
+  }
+}
+function toggleSignConfig() {
+  var body = document.getElementById('signConfigBody');
+  var arrow = document.getElementById('signConfigArrow');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    arrow.textContent = '▲';
+  } else {
+    body.style.display = 'none';
+    arrow.textContent = '▼';
+  }
+}
 function showToast(msg, type) {
   var t = document.createElement('div');
   t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:10000;'+(type==='err'?'background:#EF4444;color:#fff':'background:#10B981;color:#fff');
@@ -973,10 +996,12 @@ function renderConfig(accounts, cfg) {
       </div>
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
-        <div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..."></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
-        <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
+        <div class="token-input-wrap">
+          <input type="password" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px;padding-right:40px">
+          <button type="button" class="token-toggle" onclick="toggleToken(${idx})">显示</button>
+        </div>
       </div>
     </div>`).join('');
 
@@ -1009,6 +1034,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .form-item.full{grid-column:1/-1}
 .switch-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#334155;padding:8px 0}
 .switch-label input[type="checkbox"]{width:18px;height:18px;accent-color:#0891B2;cursor:pointer}
+.token-input-wrap{position:relative}
+.token-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:1px solid #E2E8F0;border-radius:6px;padding:3px 10px;font-size:11px;color:#64748B;cursor:pointer;font-family:inherit}
+.token-toggle:hover{background:#F1F5F9}
 .btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;transition:all .15s;font-family:inherit}
 .btn:hover{background:#F1F5F9}
 .btn-primary{background:#0891B2;color:#fff;border-color:#0891B2}
@@ -1036,8 +1064,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   <!-- 签名配置 -->
   <div class="panel">
-    <div class="panel-head"><div class="panel-title"><span class="bar"></span>签名密钥配置</div></div>
-    <div class="panel-body">
+    <div class="panel-head" style="cursor:pointer" onclick="toggleSignConfig()">
+      <div class="panel-title"><span class="bar"></span>签名密钥配置 <span id="signConfigArrow" style="font-size:12px;color:#94A3B8;margin-left:6px">▼</span></div>
+    </div>
+    <div class="panel-body" id="signConfigBody" style="display:none">
       <div class="form-grid">
         <div class="form-item"><label>App端 appId</label><input type="text" id="cfg_app_id" value="${cfg.app.appId}"></div>
         <div class="form-item"><label>App端 appSecret</label><input type="text" id="cfg_app_secret" value="${cfg.app.appSecret}" style="font-family:monospace;font-size:11px"></div>
@@ -1074,7 +1104,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       <button class="btn btn-sm" onclick="addAccount()">+ 添加账号</button>
     </div>
     <div class="panel-body">
-      <div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
+      <input type="hidden" id="existingAccountsData" value='${JSON.stringify(accounts)}'><div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
       <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。用户ID可在抓包响应 <code>data.id</code> 中找到。</div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveAccounts()">保存账号</button>
@@ -1085,6 +1115,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 </div>
 <div id="toast" class="toast"></div>
 <script>
+function toggleToken(idx) {
+  var input = document.getElementById('acc_token_' + idx);
+  var btn = event.target;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '隐藏';
+  } else {
+    input.type = 'password';
+    btn.textContent = '显示';
+  }
+}
+function toggleSignConfig() {
+  var body = document.getElementById('signConfigBody');
+  var arrow = document.getElementById('signConfigArrow');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    arrow.textContent = '▲';
+  } else {
+    body.style.display = 'none';
+    arrow.textContent = '▼';
+  }
+}
 function showToast(msg, type) {
   var t = document.getElementById('toast');
   t.textContent = msg;
