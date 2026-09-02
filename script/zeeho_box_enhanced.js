@@ -377,23 +377,29 @@ async function fetchVehicleList(acc, cfg) {
   try {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
-    const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
+    const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
-      "user_id": acc.userId || "",
       ...signH
-    });
-    if (res.code == "10000" && Array.isArray(res.data)) {
-      return res.data.map(v => ({
-        vinNo: String(v.vinNo || v.frameNo || "").trim(),
-        name: String(v.vehicleName || v.vehicleType || v.deviceName || "车辆").trim() || "车辆",
-        pic: String(v.vehiclePicUrl || "").trim(),
-        vehicleType: String(v.vehicleType || "").trim(),
-        licensePlate: v.licensePlate || null
-      })).filter(v => v.vinNo);
+    };
+    if (acc.userId) headers["user_id"] = String(acc.userId);
+    const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", headers);
+    // 兼容多种响应格式：data 可能是数组，也可能是 { list: [...] } 或 { records: [...] }
+    let list = [];
+    if (res.code == "10000" || res.code === 10000) {
+      if (Array.isArray(res.data)) list = res.data;
+      else if (res.data && Array.isArray(res.data.list)) list = res.data.list;
+      else if (res.data && Array.isArray(res.data.records)) list = res.data.records;
+      else if (res.data && Array.isArray(res.data.rows)) list = res.data.rows;
     }
-    return [];
+    return list.map(v => ({
+      vinNo: String(v.vinNo || v.frameNo || v.vin || "").trim(),
+      name: String(v.vehicleName || v.vehicleType || v.deviceName || v.name || "车辆").trim() || "车辆",
+      pic: String(v.vehiclePicUrl || v.pic || v.imageUrl || "").trim(),
+      vehicleType: String(v.vehicleType || v.type || "").trim(),
+      licensePlate: v.licensePlate || null
+    })).filter(v => v.vinNo);
   } catch(e) { return []; }
 }
 
@@ -408,7 +414,7 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
       "user_id": acc.userId || "",
       ...signH
     });
-    if (res.code == "10000" && res.data) {
+    if ((res.code == "10000" || res.code === 10000) && res.data) {
       const d = res.data;
       const soc = Number(d.bmssoc || d.batteryLevel || 0);
       const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || 0);
@@ -438,8 +444,8 @@ async function fetchTirePressure(acc, cfg, vinNo) {
       "user_id": acc.userId || "",
       ...signH
     });
-    if (res.code == "10000" && res.data) {
-      const list = Array.isArray(res.data.realTimeData) ? res.data.realTimeData : [];
+    if ((res.code == "10000" || res.code === 10000) && res.data) {
+      const list = Array.isArray(res.data.realTimeData) ? res.data.realTimeData : (Array.isArray(res.data) ? res.data : []);
       const byPos = {};
       for (const it of list) {
         const pos = Number(it?.sensorPosition);
@@ -526,10 +532,10 @@ async function fetchVehicleInfo(acc, cfg) {
     result.vehicleName = v.name;
     result.vehicleImageUrl = v.pic;
     const [widgets, tire, ride, charge] = await Promise.all([
-      fetchVehicleWidgets(acc, cfg, v.vinNo),
-      fetchTirePressure(acc, cfg, v.vinNo),
-      fetchRideInfo(acc, cfg, v.vinNo),
-      fetchBatteryChargeState(acc, cfg, v.vinNo)
+      fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
+      fetchTirePressure(acc, cfg, v.vinNo).catch(() => null),
+      fetchRideInfo(acc, cfg, v.vinNo).catch(() => null),
+      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => "未充电")
     ]);
     if (widgets) {
       result.batteryPercent = widgets.batteryPercent;
@@ -685,7 +691,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="acc-avatar">${(a.userName || '?').charAt(0).toUpperCase()}</div>
         <div class="acc-info">
           <div class="acc-name">${a.userName}</div>
-          <div class="acc-uid num">ID ${a.userId}</div>
+          <div class="acc-uid num">ID ${a.userId} ${a.vehicle && !a.vehicle.hasVehicle ? '<span style="color:#F59E0B">·无车辆</span>' : ''}</div>
         </div>
         <div class="acc-badge ${a.signedToday ? 'badge-ok' : 'badge-miss'}">${a.signedToday ? '已签到' : '未签到'}</div>
         <div class="token-badge ${a.tokenValid === false ? 'token-invalid' : 'token-valid'}" title="${a.tokenValid === false ? (a.tokenReason || 'token失效') : 'token正常'}">${a.tokenValid === false ? '⚠️失效' : '✓正常'}</div>
