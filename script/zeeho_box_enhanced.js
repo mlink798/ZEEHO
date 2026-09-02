@@ -371,6 +371,187 @@ function getPostIdFromData(data) {
   return null;
 }
 
+
+// ========== 车辆信息获取 ==========
+async function fetchVehicleList(acc, cfg) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      ...signH
+    });
+    if (res.code == "10000" && Array.isArray(res.data)) {
+      return res.data.map(v => ({
+        vinNo: String(v.vinNo || v.frameNo || "").trim(),
+        name: String(v.vehicleName || v.vehicleType || v.deviceName || "车辆").trim() || "车辆",
+        pic: String(v.vehiclePicUrl || "").trim(),
+        vehicleType: String(v.vehicleType || "").trim(),
+        licensePlate: v.licensePlate || null
+      })).filter(v => v.vinNo);
+    }
+    return [];
+  } catch(e) { return []; }
+}
+
+async function fetchVehicleWidgets(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/widgets/${encodeURIComponent(vinNo)}`, {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      ...signH
+    });
+    if (res.code == "10000" && res.data) {
+      const d = res.data;
+      const soc = Number(d.bmssoc || d.batteryLevel || 0);
+      const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || 0);
+      return {
+        batteryPercent: Math.max(0, Math.min(100, isFinite(soc) ? soc : 0)),
+        residualRangeKm: isFinite(range) ? range : 0,
+        address: String(d.address || "").trim(),
+        locationTime: String(d.location?.locationTime || "").trim(),
+        vehicleName: String(d.vehicleName || "").trim(),
+        vehicleImageUrl: String(d.vehicleScalePicUrl || d.vehiclePicUrl || "").trim(),
+        headLockState: String(d.headLockState || "").trim(),
+        batteryPullOut: String(d.batteryPullOutFlag || "") === "1"
+      };
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
+async function fetchTirePressure(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/app/vehicle/tire/monitoring?vinNo=${encodeURIComponent(vinNo)}&timePeriodType=1`, {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      ...signH
+    });
+    if (res.code == "10000" && res.data) {
+      const list = Array.isArray(res.data.realTimeData) ? res.data.realTimeData : [];
+      const byPos = {};
+      for (const it of list) {
+        const pos = Number(it?.sensorPosition);
+        if (pos) byPos[pos] = it;
+      }
+      const fmt = (it) => {
+        const warn = Number(it?.warningType ?? 0);
+        const v = String(it?.tirePressure ?? "").trim();
+        const n = parseFloat(v);
+        if (warn !== 0 || !v || !isFinite(n) || n <= 0) return "未绑定";
+        return v + "bar";
+      };
+      const fmtTemp = (it) => {
+        const warn = Number(it?.warningType ?? 0);
+        const v = it?.tireTemp;
+        if (warn !== 0 || v == null) return "";
+        const s = String(v).trim();
+        const n = parseFloat(s);
+        if (!s || s.toLowerCase() === "null" || !isFinite(n) || n <= 0) return "";
+        return s + "°C";
+      };
+      const front = byPos[1] || list[0];
+      const rear = byPos[2] || list[1];
+      return {
+        frontPressure: front ? fmt(front) : "未绑定",
+        rearPressure: rear ? fmt(rear) : "未绑定",
+        frontTemp: front ? fmtTemp(front) : "",
+        rearTemp: rear ? fmtTemp(rear) : ""
+      };
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
+async function fetchRideInfo(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const month = new Date().getFullYear() + "." + String(new Date().getMonth()+1).padStart(2,"0");
+    const [homeRes, myRes] = await Promise.all([
+      httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/homeRideInfo?vinNo=${encodeURIComponent(vinNo)}`, {
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+      }),
+      httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/myRideInfo?vinNo=${encodeURIComponent(vinNo)}&month=${month}`, {
+        "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+      })
+    ]);
+    const h = homeRes?.data || homeRes || {};
+    const d = myRes?.data || myRes || {};
+    const list = Array.isArray(d.rideRecordList) ? d.rideRecordList : [];
+    const todayKey = new Date().getFullYear() + "." + String(new Date().getMonth()+1).padStart(2,"0") + "." + String(new Date().getDate()).padStart(2,"0");
+    const day = list.find(x => String(x?.date || "") === todayKey) || list[list.length - 1] || {};
+    return {
+      todayDistance: Number(day.rideMileage ?? h.rideMileageDay ?? 0),
+      todayDuration: Number(day.ridingTimeDayUnitMinute ?? h.lastRidingTimeUnitMinute ?? 0),
+      todayMaxSpeed: Number(day.maxSpeed ?? 0),
+      lastRideMileage: Number(h.lastRideMileage ?? 0),
+      lastRideDuration: Number(h.lastRidingTimeUnitMinute ?? 0)
+    };
+  } catch(e) { return null; }
+}
+
+async function fetchBatteryChargeState(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`, {
+      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", ...signH
+    });
+    if (res.code == "10000" && res.data) {
+      return String(res.data.chargeStateStr || "未充电");
+    }
+    return "未充电";
+  } catch(e) { return "未充电"; }
+}
+
+async function fetchVehicleInfo(acc, cfg) {
+  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "" };
+  try {
+    const vehicles = await fetchVehicleList(acc, cfg);
+    if (vehicles.length === 0) return result;
+    const v = vehicles[0];
+    result.hasVehicle = true;
+    result.vehicleName = v.name;
+    result.vehicleImageUrl = v.pic;
+    const [widgets, tire, ride, charge] = await Promise.all([
+      fetchVehicleWidgets(acc, cfg, v.vinNo),
+      fetchTirePressure(acc, cfg, v.vinNo),
+      fetchRideInfo(acc, cfg, v.vinNo),
+      fetchBatteryChargeState(acc, cfg, v.vinNo)
+    ]);
+    if (widgets) {
+      result.batteryPercent = widgets.batteryPercent;
+      result.residualRangeKm = widgets.residualRangeKm;
+      result.address = widgets.address;
+      if (widgets.vehicleName) result.vehicleName = widgets.vehicleName;
+      if (widgets.vehicleImageUrl) result.vehicleImageUrl = widgets.vehicleImageUrl;
+    }
+    if (tire) {
+      result.frontPressure = tire.frontPressure;
+      result.rearPressure = tire.rearPressure;
+      result.frontTemp = tire.frontTemp;
+      result.rearTemp = tire.rearTemp;
+    }
+    if (ride) {
+      result.todayDistance = ride.todayDistance;
+      result.todayDuration = ride.todayDuration;
+      result.todayMaxSpeed = ride.todayMaxSpeed;
+      result.lastRideMileage = ride.lastRideMileage;
+    }
+    result.chargeState = charge;
+  } catch(e) {}
+  return result;
+}
+
 // ========== 获取单账号实时数据 ==========
 async function fetchAccountData(acc, cfg) {
   const token = cleanToken(acc.token);
@@ -460,6 +641,11 @@ async function fetchAccountData(acc, cfg) {
     result.tokenReason = tokenCheck.reason || null;
     if (tokenCheck.valid && tokenCheck.userName) result.userName = tokenCheck.userName;
   } catch(e) { result.tokenValid = true; }
+  // 车辆信息
+  try {
+    const vehicle = await fetchVehicleInfo(acc, cfg);
+    result.vehicle = vehicle;
+  } catch(e) { result.vehicle = { hasVehicle: false }; }
   return result;
 }
 
@@ -516,6 +702,40 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="week-label">近 7 天签到</div>
         <div class="week-grid">${last7}</div>
       </div>
+      ${a.vehicle && a.vehicle.hasVehicle ? `
+      <div class="vehicle-section">
+        <div class="vehicle-label">
+          <span>🚗 ${a.vehicle.vehicleName || "车辆"}</span>
+          <span class="vehicle-charge ${a.vehicle.chargeState && a.vehicle.chargeState !== "未充电" ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="v-kpi">
+            <div class="v-kpi-val" style="color:${a.vehicle.batteryPercent <= 20 ? "#EF4444" : a.vehicle.batteryPercent <= 50 ? "#F59E0B" : "#0891B2"}">${a.vehicle.batteryPercent}%</div>
+            <div class="v-kpi-lbl">电量</div>
+          </div>
+          <div class="v-kpi">
+            <div class="v-kpi-val">${a.vehicle.residualRangeKm}</div>
+            <div class="v-kpi-lbl">续航km</div>
+          </div>
+          <div class="v-kpi">
+            <div class="v-kpi-val">${a.vehicle.todayDistance ? a.vehicle.todayDistance.toFixed(1) : "0"}</div>
+            <div class="v-kpi-lbl">今日km</div>
+          </div>
+          <div class="v-kpi">
+            <div class="v-kpi-val">${a.vehicle.todayDuration || 0}</div>
+            <div class="v-kpi-lbl">骑行min</div>
+          </div>
+        </div>
+        <div class="vehicle-bar">
+          <div class="vehicle-bar-fill" style="width:${a.vehicle.batteryPercent}%;background:${a.vehicle.batteryPercent <= 20 ? "#EF4444" : a.vehicle.batteryPercent <= 50 ? "#F59E0B" : "#0891B2"}"></div>
+        </div>
+        ${(a.vehicle.frontPressure || a.vehicle.rearPressure) ? `
+        <div class="tire-row">
+          <div class="tire-item"><span class="tire-icon">🛞</span>前 ${a.vehicle.frontPressure || "-"} ${a.vehicle.frontTemp ? `<span class="tire-temp">${a.vehicle.frontTemp}</span>` : ""}</div>
+          <div class="tire-item"><span class="tire-icon">🛞</span>后 ${a.vehicle.rearPressure || "-"} ${a.vehicle.rearTemp ? `<span class="tire-temp">${a.vehicle.rearTemp}</span>` : ""}</div>
+        </div>` : ""}
+        ${a.vehicle.address ? `<div class="vehicle-addr">📍 ${a.vehicle.address}</div>` : ""}
+      </div>` : ""}
     </div>`;
   }).join('');
 
@@ -578,6 +798,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .day-today{background:#0891B2;border:1px solid #0E7490;color:#fff;box-shadow:0 0 0 2px #E0F7FB}
 .day-num{font-weight:700;font-size:10px}
 .day-mark{font-size:8px;margin-top:1px}
+.vehicle-section{margin-top:12px;padding-top:12px;border-top:1px solid #F1F5F9}
+.vehicle-label{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#0F172A;margin-bottom:8px}
+.vehicle-charge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:#F1F5F9;color:#64748B}
+.vehicle-charge.charging{background:#D1FAE5;color:#065F46}
+.vehicle-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.v-kpi{text-align:center;background:#F8FAFC;border-radius:6px;padding:6px 2px}
+.v-kpi-val{font-size:14px;font-weight:800;color:#0F172A}
+.v-kpi-lbl{font-size:9px;color:#94A3B8;margin-top:1px}
+.vehicle-bar{height:10px;background:#F1F5F9;border-radius:5px;overflow:hidden;margin-bottom:8px}
+.vehicle-bar-fill{height:100%;border-radius:5px;transition:width .5s ease}
+.tire-row{display:flex;gap:12px;margin-bottom:6px}
+.tire-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px}
+.tire-icon{font-size:12px}
+.tire-temp{color:#0EA5E9;font-size:10px}
+.vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;margin-top:10px}
 .footer a{color:#0891B2;text-decoration:none}
 .empty-state{text-align:center;padding:60px 20px;color:#94A3B8}
