@@ -1,10 +1,29 @@
 /*
-极核 ZEEHO 签到看板 · BoxJS 增强版
-作者: lucky | https://github.com/mlink798
-功能: 多账号实时数据看板 + 网页配置(appid/appSecret/token) + Bearer鉴权
-使用: 代理工具添加重写规则, 浏览器访问 http://zeeho.box
-重写规则: http-request ^http://zeeho\.box script-path=zeeho_box_enhanced.js, requires-body=true, timeout=60
-*/
+#!name=极核 ZEEHO 签到看板
+#!desc=多账号实时数据看板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
+#!author=lucky
+#!homepage=https://github.com/mlink798/ZEEHO
+
+图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
+
+[Script]
+# 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
+http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
+
+[MITM]
+hostname = zeeho.box
+
+====================================
+⚠️【免责声明】
+------------------------------------------
+1、此脚本仅用于学习研究，不保证其合法性、准确性、有效性，请根据情况自行判断，本人对此不承担任何保证责任。
+2、由于此脚本仅用于学习研究，您必须在下载后 24 小时内将所有内容从您的计算机或手机或任何存储设备中完全删除，若违反规定引起任何事件本人对此均不负责。
+3、请勿将此脚本用于任何商业或非法目的，若违反规定请自行对此负责。
+4、此脚本涉及应用与本人无关，本人对因此引起的任何隐私泄漏或其他后果不承担任何责任。
+5、本人对任何脚本引发的问题概不负责，包括但不限于由脚本错误引起的任何损失和损害。
+6、如果任何单位或个人认为此脚本可能涉嫌侵犯其权利，应及时通知并提供身份证明，所有权证明，我们将在收到认证文件确认后删除此脚本。
+7、所有直接或间接使用、查看此脚本的人均应该仔细阅读此声明。本人保留随时更改或补充此声明的权利。一旦您使用或复制了此脚本，即视为您已接受此免责声明。
+ */
 
 const $ = new Env("极核看板增强版");
 
