@@ -10,8 +10,14 @@
 # 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
 http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
 
+# 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
+http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
+
+# 定时签到：每天早上7点自动签到+盲盒+社区任务
+cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
+
 [MITM]
-hostname = zeeho.box
+hostname = tapi.zeehoev.com, zeeho.box
 
 ====================================
 ⚠️【免责声明】
