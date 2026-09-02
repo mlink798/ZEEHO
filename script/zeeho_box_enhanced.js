@@ -955,12 +955,12 @@ function closeModal() {
 }
 function toggleToken(idx) {
   var input = document.getElementById('acc_token_' + idx);
-  var btn = event.target;
-  if (input.type === 'password') {
-    input.type = 'text';
+  var btn = document.getElementById('token_btn_' + idx);
+  if (input.classList.contains('token-hidden')) {
+    input.classList.remove('token-hidden');
     btn.textContent = '隐藏';
   } else {
-    input.type = 'password';
+    input.classList.add('token-hidden');
     btn.textContent = '显示';
   }
 }
@@ -1000,8 +1000,8 @@ function renderConfig(accounts, cfg) {
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <div class="token-input-wrap">
-          <input type="password" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px;padding-right:40px">
-          <button type="button" class="token-toggle" onclick="toggleToken(${idx})">显示</button>
+          <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="token-hidden" style="font-family:monospace;font-size:12px;padding-right:40px">
+          <button type="button" class="token-toggle" id="token_btn_${idx}" onclick="toggleToken(${idx})">显示</button>
         </div>
       </div>
     </div>`).join('');
@@ -1038,6 +1038,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .token-input-wrap{position:relative}
 .token-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:1px solid #E2E8F0;border-radius:6px;padding:3px 10px;font-size:11px;color:#64748B;cursor:pointer;font-family:inherit}
 .token-toggle:hover{background:#F1F5F9}
+.token-hidden{-webkit-text-security:disc;text-security:disc}
 .btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid #E2E8F0;background:#fff;color:#475569;cursor:pointer;transition:all .15s;font-family:inherit}
 .btn:hover{background:#F1F5F9}
 .btn-primary{background:#0891B2;color:#fff;border-color:#0891B2}
@@ -1118,12 +1119,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 <script>
 function toggleToken(idx) {
   var input = document.getElementById('acc_token_' + idx);
-  var btn = event.target;
-  if (input.type === 'password') {
-    input.type = 'text';
+  var btn = document.getElementById('token_btn_' + idx);
+  if (input.classList.contains('token-hidden')) {
+    input.classList.remove('token-hidden');
     btn.textContent = '隐藏';
   } else {
-    input.type = 'password';
+    input.classList.add('token-hidden');
     btn.textContent = '显示';
   }
 }
@@ -1177,7 +1178,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><div class="token-input-wrap"><input type="password" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px;padding-right:40px"><button type="button" class="token-toggle" onclick="toggleToken('+idx+')">显示</button></div></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><div class="token-input-wrap"><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="token-hidden" style="font-family:monospace;font-size:12px;padding-right:40px"><button type="button" class="token-toggle" id="token_btn_'+idx+'" onclick="toggleToken('+idx+')">显示</button></div></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
