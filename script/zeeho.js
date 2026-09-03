@@ -165,8 +165,10 @@ class UserInfo {
   constructor(user) {
     //默认属性
     this.index = ++userIdx;
-    this.token = user.token || user;
-    this.userId = user.userId;
+    // 清洗token：去掉Bearer前缀，再统一加上Bearer（参考Dantezcx脚本）
+    const rawToken = user.token || user;
+    this.token = "Bearer " + String(rawToken || "").replace(/^[bB]earer\s+/i, "").trim();
+    this.userId = String(user.userId || "").trim();
     this.userName = user.userName;
     this.userAgent = user.userAgent;
     this.ckStatus = true;
@@ -177,7 +179,7 @@ class UserInfo {
       "Content-Type": "application/json;charset=UTF-8",
       "Authorization": this.token,
       "User-Agent": this.userAgent,
-      "user_id": String(this.userId || ""),
+      "user_id": this.userId,
       "interfaceversion": "2",
     }
     this.getRandomTime = () => randomInt(1e3, 3e3);
@@ -701,11 +703,20 @@ async function Request(o) {
     const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 1e4
     // 根据jsonType处理headers
     if (dataType === 'json') headers['Content-Type'] = 'application/json;charset=UTF-8';
-    // post请求处理body
-    const body = b && dataType == 'form' ? $.queryStr(b) : $.toStr(b);
+    // post请求处理body（空body也要保留，用于Content-Length:0）
+    const hasBody = b !== undefined && b !== null;
+    const body = hasBody ? (dataType == 'form' ? $.queryStr(b) : $.toStr(b)) : '';
+    // POST/PUT/DELETE 无body时设置 Content-Length: 0（参考Dantezcx脚本）
+    if (method !== 'get' && !hasBody) {
+      headers['Content-Length'] = '0';
+    }
+    // 有body时设置 Content-Length
+    if (hasBody && body) {
+      headers['Content-Length'] = String(body.length);
+    }
     if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
-      // App端签名: body || signQuery（POST有body用body，GET用query，参考Dantezcx脚本）
-      const signPayload = body || signQuery;
+      // App端签名: body || signQuery（POST有body用body，GET/DELETE用query，参考Dantezcx脚本）
+      const signPayload = (hasBody && body) ? body : signQuery;
       if (signPayload) {
         const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
         const sign = md5(sha1(signature), 32).toString();
@@ -713,8 +724,9 @@ async function Request(o) {
         headers['signature'] = sign;
       }
     }
-    const httpMethod = ['get', 'post'].includes(method) ? method : 'post';
-    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method, headers, params: undefined, ...(method !== 'get' && body && { body }), timeout: timeout }
+    // 保持原始method（GET/POST/PUT/DELETE），不转换
+    const httpMethod = method;
+    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method: httpMethod, headers, params: undefined, ...(method !== 'get' ? { body: body } : {}), timeout: timeout }
     const httpPromise = $.http[httpMethod.toLowerCase()](request)
       .then(response => resultType == 'data' ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
       .catch(err => $.log(`❌请求发起失败！原因为：${err}`));
