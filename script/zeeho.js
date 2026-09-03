@@ -57,9 +57,59 @@ async function main() {
     for (let user of userList) {
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
-      // 签到
+
+      // 预验证：检查用户ID与Token是否匹配
+      let accountValid = false;
+      try {
+        const vSign = getSign('app', {});
+        const vHeaders = {
+          "Authorization": user.token,
+          "Content-Type": "application/json;charset=UTF-8",
+          "interfaceversion": "2",
+          "user_id": String(user.userId || ""),
+          ...vSign
+        };
+        const vRes = await Request({
+          url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${user.userId}`,
+          type: "get",
+          headers: vHeaders,
+          dataType: "json"
+        });
+        if (vRes?.code == "10000" && vRes?.data) {
+          const returnedId = String(vRes.data.id || vRes.data.userId || "");
+          if (returnedId === String(user.userId)) {
+            accountValid = true;
+          }
+        }
+      } catch(e) {}
+
+      // 签到（无论是否验证通过都执行签到）
       const integral = (await user.signin()) || 0;
       let integralScore = 0;
+
+      if (!accountValid) {
+        // 验证不通过：仅签到，跳过全部社区积分任务
+        $.log(`⚠️ 账号「${user.userName || user.index}」用户ID与Token不匹配，仅执行签到，跳过积分任务`);
+        $.notifyMsg.push(`「${user.userName || user.index}」仅签到(Token不匹配)`);
+        // 写入运行日志
+        try {
+          addSigninLog({
+            time: new Date().toLocaleString("zh-CN", { hour12: false }),
+            userName: user.userName || "未知",
+            userId: user.userId,
+            success: true,
+            totalGain: integral || 0,
+            signinScore: integral || 0,
+            blindBoxScore: 0,
+            interactScore: 0,
+            continueDays: 0,
+            error: "Token与用户ID不匹配，仅执行签到",
+            steps: [`仅签到 +${integral || 0}`, "跳过社区积分任务（Token不匹配）"]
+          });
+        } catch(e) {}
+        continue;
+      }
+
       if (user.ckStatus) {
         await $.wait(user.getRandomTime());
         // 查看签到记录
@@ -690,35 +740,62 @@ async function getCookie() {
   userCookie = userCookie ? JSON.parse(userCookie) : [];
 
   if (isSelf && userId) {
-    // 确认是当前用户自己的信息，新增或更新账号
-    const newData = {
-      "userId": String(userId),
-      "token": token,
-      "userName": userName || "未知用户",
-      "userAgent": userAgent
-    };
-    const index = userCookie.findIndex(e => String(e.userId) === String(newData.userId));
-    userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
-    $.setjson(userCookie, ckName);
-    $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
-  } else {
-    // 不是当前用户自己的信息（如查看粉丝主页），只通过 token 更新已有账号的 token
-    // 不新增账号，避免把别人的ID和自己的token绑定
-    const cleanToken = String(token || "").replace(/^[bB]earer\s+/i, "").trim();
-    let updated = false;
-    for (let i = 0; i < userCookie.length; i++) {
-      const accToken = String(userCookie[i].token || "").replace(/^[bB]earer\s+/i, "").trim();
-      if (accToken === cleanToken) {
-        userCookie[i].token = token;
-        if (userAgent) userCookie[i].userAgent = userAgent;
-        updated = true;
-        break;
+    // 确认是当前用户自己的信息，先验证Token与userId是否匹配
+    let tokenMatch = false;
+    try {
+      const verifySign = getSign('app', {});
+      const verifyHeaders = {
+        "Authorization": token,
+        "Content-Type": "application/json;charset=UTF-8",
+        "interfaceversion": "2",
+        "user_id": String(userId),
+        ...verifySign
+      };
+      const verifyRes = await Request({
+        url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`,
+        type: "get",
+        headers: verifyHeaders,
+        dataType: "json"
+      });
+      if (verifyRes?.code == "10000" && verifyRes?.data) {
+        const returnedId = String(verifyRes.data.id || verifyRes.data.userId || "");
+        if (returnedId === String(userId)) {
+          tokenMatch = true;
+        }
       }
+    } catch(e) {}
+
+    // 用户ID总是可以存入，Token只有在匹配时才存入
+    const index = userCookie.findIndex(e => String(e.userId) === String(userId));
+    if (index >= 0) {
+      // 账号已存在，更新用户ID和昵称
+      userCookie[index].userId = String(userId);
+      if (userName) userCookie[index].userName = userName;
+      // Token匹配才更新Token，不匹配则保留原有Token（或留空）
+      if (tokenMatch) {
+        userCookie[index].token = token;
+        if (userAgent) userCookie[index].userAgent = userAgent;
+      }
+    } else {
+      // 新账号，用户ID和昵称存入，Token匹配才存Token
+      const newData = {
+        "userId": String(userId),
+        "token": tokenMatch ? token : "",
+        "userName": userName || "未知用户",
+        "userAgent": tokenMatch ? userAgent : ""
+      };
+      userCookie.push(newData);
     }
-    if (updated) {
-      $.setjson(userCookie, ckName);
+    $.setjson(userCookie, ckName);
+
+    if (tokenMatch) {
+      $.msg($.name, `🎉${userName || "未知用户"}更新token成功!`, ``);
+    } else {
+      // Token不匹配，只存入用户ID，提示用户手动填写Token
+      $.msg($.name, `⚠️${userName || "未知用户"}用户ID已存入，但Token不匹配，请手动填写Token`, ``);
     }
-    // 不弹通知，避免干扰
+  } else {
+    // 不是当前用户自己的信息（如查看粉丝主页），不写入
   }
 }
 
