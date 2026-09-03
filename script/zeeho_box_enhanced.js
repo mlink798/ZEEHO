@@ -33,6 +33,15 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 
 const $ = new Env("极核看板增强版");
 
+// ========== 极核 ZEEHO 签到面板脚本 ==========
+// 版本: v1.0.0
+// 更新日期: 2026-09-04
+// 作者: @lucky
+// 主页: https://github.com/mlink798/ZEEHO
+// ============================================
+const SCRIPT_VERSION = "v2.1.3";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (${VERSION_DATE})`);
+
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
 // 打开极核App时，API请求被拦截 → 自动提取appId保存 → 放行请求
@@ -131,20 +140,72 @@ const $ = new Env("极核看板增强版");
 
         // ===== 默认：保存配置 =====
         const name = params.get('name') || '';
-        const userId = params.get('userId') || '';
-        if (userId && token) {
+        let userId = params.get('userId') || '';
+        
+        // 保存账号配置的函数
+        function saveAccount(uid, nick) {
           let accounts = [];
           try { accounts = JSON.parse($persistentStore.read('zeeho_data') || '[]'); } catch(e) { accounts = []; }
           if (!Array.isArray(accounts)) accounts = [];
-          const idx = accounts.findIndex(a => String(a.userId) === String(userId));
-          const acc = { userName: name || ('账号' + (accounts.length + 1)), userId: userId, token: token };
+          const idx = accounts.findIndex(a => String(a.userId) === String(uid));
+          const acc = { 
+            userName: name || nick || ('账号' + (accounts.length + 1)), 
+            userId: uid, 
+            token: token,
+            barkKey: barkKey || (accounts[idx]?.barkKey || '')
+          };
           if (idx >= 0) {
             accounts[idx] = Object.assign({}, accounts[idx], acc);
           } else {
             accounts.push(acc);
           }
           $persistentStore.write(JSON.stringify(accounts), 'zeeho_data');
-          console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + userId + ')' + (barkKey ? ' BarkKey:' + barkKey.substring(0,8) + '...' : ''));
+          console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + uid + ')' + (barkKey ? ' BarkKey:' + barkKey.substring(0,8) + '...' : ''));
+        }
+        
+        if (token) {
+          if (userId) {
+            // 客户端已传userId，直接保存
+            saveAccount(userId, '');
+            $done({});
+            return true;
+          } else {
+            // 客户端没传userId，自动调用baseInfo获取
+            console.log('[Bark配置] 未传userId，自动获取中...');
+            try {
+              const cfg = getConfig();
+              const signHeaders = getSign('h5', { server_name: 'SMART' }, '', cfg);
+              const url = 'https://h5.zeehoev.com/cfmotoservermine/baseInfo?server_name=SMART';
+              const headers = {
+                'Content-Type': 'application/json;charset=UTF-8',
+                'Authorization': 'Bearer ' + token,
+                ...signHeaders
+              };
+              httpGet(url, headers).then(function(res) {
+                if (res && String(res.code) === '10000' && res.data) {
+                  const uid = String(res.data.id || '');
+                  const nick = res.data.nickName || '';
+                  if (uid) {
+                    saveAccount(uid, nick);
+                    console.log('[Bark配置] 自动获取用户ID成功: ' + uid + ' (' + nick + ')');
+                  } else {
+                    console.log('[Bark配置] 获取用户ID失败: 返回数据无id');
+                  }
+                } else {
+                  console.log('[Bark配置] 获取用户ID失败: ' + (res.message || res.msg || JSON.stringify(res).substring(0,100)));
+                }
+                $done({});
+              }).catch(function(e) {
+                console.log('[Bark配置] 获取用户ID异常: ' + String(e));
+                $done({});
+              });
+              return true; // 异步处理，$done在回调里调用
+            } catch(e) {
+              console.log('[Bark配置] 获取用户ID异常: ' + String(e));
+              $done({});
+              return true;
+            }
+          }
         }
       } catch(e) { console.log('[Bark拦截] 解析异常:', e); }
       $done({});
@@ -198,12 +259,8 @@ const CK_DATA = "zeeho_data";
 const CK_LOGS = "zeeho_logs";
 
 // ========== 默认配置 ==========
-const DEFAULT_CONFIG = {
-  app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
-  h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" },
-  community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true }
-};
 
+// ========== 版本信息 ==========
 // ========== 配置读写 ==========
 function getConfig() {
   // 从捕获脚本保存的 $persistentStore 读取（zeeho_h5_appId / zeeho_app_appId）
