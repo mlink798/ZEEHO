@@ -570,7 +570,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -611,9 +611,14 @@ async function fetchVehicleInfo(acc, cfg) {
     if (battery.voltage) result.voltage = battery.voltage;
     if (battery.current) result.current = battery.current;
     if (battery.batteryTemp) result.batteryTemp = battery.batteryTemp;
-    // 续航兜底：widgets 充电时可能返回0，用 batteryInfo 的续航
+    // 续航兜底：充电时 widgets/batteryInfo 都可能返回0，先尝试 batteryInfo，再基于电量估算
     if ((!result.residualRangeKm || result.residualRangeKm === 0) && battery.residualRangeKm) {
       result.residualRangeKm = battery.residualRangeKm;
+    }
+    if ((!result.residualRangeKm || result.residualRangeKm === 0) && result.batteryPercent > 0) {
+      // 基于电量百分比估算续航（满电按87km估算，极核AE4系列常见值）
+      result.residualRangeKm = Math.round(result.batteryPercent * 0.87);
+      result.rangeEstimated = true;
     }
     if (service) {
       result.serviceEndDate = service.rechargeEndDate;
@@ -809,7 +814,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
             <div class="v-kpi-lbl">电量SOC</div>
           </div>
           <div class="v-kpi">
-            <div class="v-kpi-val">${a.vehicle.residualRangeKm}</div>
+            <div class="v-kpi-val">${a.vehicle.rangeEstimated ? "约" + a.vehicle.residualRangeKm : a.vehicle.residualRangeKm}</div>
             <div class="v-kpi-lbl">续航km</div>
           </div>
           <div class="v-kpi">
@@ -910,7 +915,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .day-mark{font-size:8px;margin-top:1px}
 .vehicle-section{margin-top:12px;padding-top:12px;border-top:1px solid #F1F5F9}
 .vehicle-label{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#0F172A;margin-bottom:8px}
-.vin-no{font-size:10px;font-weight:500;color:#94A3B8;margin-left:6px;font-family:monospace}
+.vin-no{font-size:10px;color:#94A3B8;font-family:monospace;margin-left:6px;word-break:break-all;display:inline-block;max-width:140px}
 .vehicle-charge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:#F1F5F9;color:#64748B}
 .vehicle-charge.charging{background:#D1FAE5;color:#065F46}
 .vehicle-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
