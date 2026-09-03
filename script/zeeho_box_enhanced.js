@@ -547,7 +547,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -566,6 +566,7 @@ async function fetchVehicleInfo(acc, cfg) {
       result.batteryPercent = widgets.batteryPercent;
       result.residualRangeKm = widgets.residualRangeKm;
       result.address = widgets.address;
+      result.locationTime = widgets.locationTime;
       if (widgets.vehicleName) result.vehicleName = widgets.vehicleName;
       if (widgets.vehicleImageUrl) result.vehicleImageUrl = widgets.vehicleImageUrl;
     }
@@ -778,10 +779,13 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         ${a.vehicle.serviceEndDate ? `
         <div class="service-row">
           <span class="service-icon">📅</span>
-          <span class="service-text">服务到期: ${a.vehicle.serviceEndDate}</span>
-          ${a.vehicle.serviceStatus === "0" ? `<span class="service-remain">剩余${a.vehicle.serviceRemainDays}天</span>` : `<span class="service-expired">已过期</span>`}
+          ${a.vehicle.serviceStatus === "0" ? `<span class="service-remain">服务剩余${a.vehicle.serviceRemainDays}天</span>` : `<span class="service-expired">服务已过期</span>`}
         </div>` : ""}
-        ${a.vehicle.address ? `<div class="vehicle-addr">📍 ${a.vehicle.address}</div>` : ""}
+        ${a.vehicle.address ? `
+        <div class="vehicle-addr">
+          <span>📍 ${a.vehicle.address}</span>
+          ${a.vehicle.locationTime ? `<span class="loc-time">· ${a.vehicle.locationTime}</span>` : ""}
+        </div>` : ""}
       </div>` : ""}
     </div>`;
   }).join('');
@@ -859,7 +863,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tire-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px}
 .tire-icon{font-size:12px}
 .tire-temp{color:#0EA5E9;font-size:10px}
-.vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.loc-time{color:#CBD5E1;font-size:9px}
 .service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
 .service-icon{font-size:12px}
 .service-text{font-weight:600}
