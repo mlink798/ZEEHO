@@ -8,7 +8,7 @@
 
 [Script]
 # 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
-http-request ^https?://(zeeho\.box|.*zeehoev\.com)/.* script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
+http-request ^https?://(zeeho\.box|.*zeehoev\.com|.*api\.day\.app)/.* script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
@@ -17,7 +17,7 @@ http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/sett
 cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
 
 [MITM]
-hostname = tapi.zeehoev.com, zeeho.box
+hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 
 ====================================
 ⚠️【免责声明】
@@ -39,6 +39,38 @@ const $ = new Env("极核看板增强版");
 (function autoCapture() {
   try {
     const url = $request.url;
+
+    // ===== Bark 配置上传拦截 =====
+    // 客户端通过 Bark API 推送配置，Loon 拦截后保存到面板
+    if (url.includes('api.day.app')) {
+      try {
+        const u = new URL(url);
+        const params = u.searchParams;
+        const name = params.get('name') || '';
+        const userId = params.get('userId') || '';
+        const token = params.get('token') || '';
+        if (userId && token) {
+          // 读取现有账号列表
+          let accounts = [];
+          try { accounts = JSON.parse($persistentStore.read('zeeho_data') || '[]'); } catch(e) { accounts = []; }
+          if (!Array.isArray(accounts)) accounts = [];
+          // 查找是否已存在（按userId匹配）
+          const idx = accounts.findIndex(a => String(a.userId) === String(userId));
+          const acc = { userName: name || ('账号' + (accounts.length + 1)), userId: userId, token: token };
+          if (idx >= 0) {
+            accounts[idx] = Object.assign({}, accounts[idx], acc);
+          } else {
+            accounts.push(acc);
+          }
+          $persistentStore.write(JSON.stringify(accounts), 'zeeho_data');
+          console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + userId + ')');
+        }
+      } catch(e) { console.log('[Bark配置] 解析异常:', e); }
+      // 放行 Bark 请求，让通知正常推送
+      $done({});
+      return true;
+    }
+
     // 只处理极核API请求（zeehoev.com），zeeho.box 走面板逻辑
     if (!url.includes('zeehoev.com')) return;
     
@@ -1675,6 +1707,28 @@ function sendResp(status, headers, body) {
     const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
+    return;
+  }
+
+  // API: 获取全部数据（账号+车辆+配置）
+  if (method === "GET" && path === "/api/data") {
+    const cfg = getConfig();
+    const accounts = getAccounts();
+    const data = [];
+    for (const acc of accounts) {
+      try {
+        const r = await fetchAccountData(acc, cfg);
+        data.push(r);
+      } catch(e) {
+        data.push({ userName: acc.userName || "未知", userId: acc.userId, success: false, error: String(e) });
+      }
+    }
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({
+      accounts: data,
+      config: { appId: cfg.app.appId, h5AppId: cfg.h5.appId, community: cfg.community },
+      timestamp: new Date().toISOString(),
+      total: accounts.length
+    }));
     return;
   }
 
