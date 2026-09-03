@@ -1441,39 +1441,36 @@ function verifyAccount(idx) {
 async function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
   var list = [];
-  var errors = [];
+  var warnings = [];
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
     var idx = row.getAttribute('data-idx');
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
-    if (token && token.value.trim()) {
-      var userId = uid ? uid.value.trim() : '';
-      var tokenVal = token.value.trim();
-      // 验证用户ID与Token是否匹配
-      if (userId) {
-        try {
-          var resp = await fetch('/api/verify-account', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({userId: userId, token: tokenVal}) });
-          var result = await resp.json();
-          if (!result.valid) {
-            errors.push('账号' + (i+1) + ': ' + result.message);
-            uid.style.borderColor = '#EF4444';
-            continue; // 不保存这个账号
-          } else {
-            uid.style.borderColor = '#10B981';
-          }
-        } catch(e) {
-          // 验证接口异常时，仍然保存（避免网络问题导致无法保存）
+    var userId = uid ? uid.value.trim() : '';
+    var tokenVal = token ? token.value.trim() : '';
+    // 用户ID总是保存，Token需要验证
+    var saveToken = tokenVal;
+    if (userId && tokenVal) {
+      try {
+        var resp = await fetch('/api/verify-account', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({userId: userId, token: tokenVal}) });
+        var result = await resp.json();
+        if (result.valid) {
+          uid.style.borderColor = '#10B981';
+        } else {
+          // Token不匹配：用户ID保存，Token留空
+          warnings.push('账号' + (i+1) + '（' + (name ? name.value : '') + '）: ' + result.message + ' → 已保存用户ID，Token留空');
+          uid.style.borderColor = '#F59E0B';
+          saveToken = '';
         }
+      } catch(e) {
+        // 验证接口异常时，仍然保存Token（避免网络问题导致无法保存）
       }
-      list.push({ userName: name ? name.value : '', userId: userId, token: tokenVal, userAgent: '' });
     }
-  }
-  if (errors.length > 0) {
-    if (!confirm('以下账号验证未通过，将不保存：\n\n' + errors.join('\n') + '\n\n是否继续保存其他账号？')) {
-      showToast('已取消保存', 'err');
-      return;
+    // 只要有用户ID或Token，就保存
+    if (userId || saveToken) {
+      list.push({ userName: name ? name.value : '', userId: userId, token: saveToken, userAgent: '' });
     }
   }
   if (list.length === 0) {
@@ -1482,7 +1479,21 @@ async function saveAccounts() {
   }
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('已保存 ' + list.length + ' 个账号' + (errors.length > 0 ? '（' + errors.length + ' 个验证失败未保存）' : '')); setTimeout(function(){ location.reload(); }, 1000); } else { showToast('保存失败', 'err'); } })
+    .then(function(d){
+      if(d.ok){
+        var msg = '已保存 ' + list.length + ' 个账号';
+        if (warnings.length > 0) {
+          msg += '\n\n⚠️ ' + warnings.length + ' 个账号Token不匹配，已保存用户ID，Token留空：\n' + warnings.join('\n');
+        }
+        showToast('保存成功');
+        if (warnings.length > 0) {
+          alert(msg);
+        }
+        setTimeout(function(){ location.reload(); }, 1000);
+      } else {
+        showToast('保存失败', 'err');
+      }
+    })
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 </script>
