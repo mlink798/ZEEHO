@@ -86,7 +86,7 @@
 <div class="container">
   <div class="header">
     <h1>⚡ 极核 ZEEHO 配置客户端</h1>
-    <p>验证 · 上传 · 教程</p>
+    <p>验证 · 上传 · 教程 <span style="font-size:10px;color:#888;">v2.0.0</span></p>
   </div>
 
   <div class="tabs">
@@ -375,10 +375,10 @@ async function validateToken(){
   const userId=document.getElementById('up_userId').value.trim();
   const token=cleanToken(document.getElementById('up_token').value);
   if(!token){showResult('up_result','error','❌ 请输入 Authorization');return;}
-  if(!userId){showResult('up_result','error','❌ 请先点击「本地验证」获取用户ID');return;}
 
   // 第1层：纯本地格式校验（离线即可，不需要Loon/网络）
-  const fmt=localFormatCheck(userId,token);
+  // 用户ID验证后自动获取，所以格式校验只检查Token
+  const fmt={ok:UUID_RE.test(token),msg:UUID_RE.test(token)?'':'Token 格式错误，应为 UUID（如 f4f49d9c-e558-4887-a139-dffa9068c4f9）'};
   if(!fmt.ok){showResult('up_result','error','❌ '+fmt.msg);return;}
 
   const btn=document.getElementById('validateBtn');
@@ -396,7 +396,7 @@ async function validateToken(){
         // 自动填充用户ID
         if(returnedId)document.getElementById('up_userId').value=returnedId;
         // 记录验证通过时的内容哈希
-        _validatedHash=getFormHash();
+        
         showResult('up_result','success',`✅ 验证通过，已自动获取用户信息<br>昵称：${nickName}<br>用户ID：${returnedId||userId}<br>「Bark 上传」已解锁<br><br>💡 如需修改内容，请重新验证`);
         document.getElementById('uploadBtn').disabled=false;
       // 记录验证通过时的内容哈希
