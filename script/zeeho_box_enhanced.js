@@ -1218,7 +1218,7 @@ function renderConfig(accounts, cfg) {
       </div>
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
-        <div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009000440652" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div>
+        <div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId(${idx})" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button></label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
@@ -1371,7 +1371,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009000440652" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId('+idx+')" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button></label><input type="text" id="acc_uid_'+idx+'" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1382,6 +1382,28 @@ function addAccount() {
 function deleteAccount(idx) {
   var row = document.querySelector('.acc-row[data-idx="'+idx+'"]');
   if (row) { row.remove(); showToast('已删除（需点击保存）'); }
+}
+function fetchUserId(idx) {
+  var tokenInput = document.getElementById('acc_token_'+idx);
+  var uidInput = document.getElementById('acc_uid_'+idx);
+  var nameInput = document.getElementById('acc_name_'+idx);
+  if (!tokenInput || !tokenInput.value.trim()) {
+    showToast('请先输入Token', 'err');
+    return;
+  }
+  showToast('正在获取用户ID...');
+  fetch('/api/get-userid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: tokenInput.value.trim()}) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok && d.userId) {
+        uidInput.value = d.userId;
+        if (d.userName && nameInput && !nameInput.value) nameInput.value = d.userName;
+        showToast('用户ID获取成功: ' + d.userId);
+      } else {
+        showToast(d.error || '获取失败', 'err');
+      }
+    })
+    .catch(function(){ showToast('获取失败', 'err'); });
 }
 function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
@@ -1434,6 +1456,61 @@ function sendResp(status, headers, body) {
     const body = parseBody($request);
     const ok = saveConfig(body);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok }));
+    return;
+  }
+
+  // API: 根据Token自动获取用户ID
+  if (method === "POST" && path === "/api/get-userid") {
+    const body = parseBody($request);
+    const token = cleanToken(body.token || "");
+    const cfg = getConfig();
+    let userId = "";
+    let userName = "";
+    let error = null;
+    if (!token) {
+      error = "请先输入Token";
+    } else {
+      // 方式1：调用 /setting（不带userId）获取当前用户信息
+      try {
+        const signH = getSign("app", {}, '', cfg);
+        const res = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json;charset=UTF-8",
+          "interfaceversion": "2",
+          ...signH
+        });
+        if (res.code == "10000" && res.data) {
+          userId = String(res.data.id || res.data.userId || "");
+          userName = String(res.data.nickName || "");
+        }
+      } catch(e) {}
+      // 方式2：如果方式1失败，从 vehicle/list 响应中提取 userId
+      if (!userId) {
+        try {
+          const signH = getSign("app", {}, '', cfg);
+          const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json;charset=UTF-8",
+            "interfaceversion": "2",
+            ...signH
+          });
+          // 从响应中各种可能的字段提取 userId
+          const d = res.data || {};
+          userId = String(d.userId || d.user_id || d.uid || d.createBy || d.ownerId || "");
+          if (!userId && Array.isArray(d)) {
+            userId = String(d[0]?.userId || d[0]?.user_id || d[0]?.uid || d[0]?.createBy || "");
+          }
+          if (!userId && Array.isArray(d.list)) {
+            userId = String(d.list[0]?.userId || d.list[0]?.user_id || d.list[0]?.uid || "");
+          }
+          if (!userId && Array.isArray(d.records)) {
+            userId = String(d.records[0]?.userId || d.records[0]?.user_id || d.records[0]?.uid || "");
+          }
+        } catch(e) {}
+      }
+      if (!userId) error = "无法自动获取用户ID，请手动填写（抓包/setting/{userId}响应data.id）";
+    }
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: !!userId, userId: userId, userName: userName, error: error }));
     return;
   }
 
