@@ -47,18 +47,33 @@ const DEFAULT_CONFIG = {
 
 // ========== 配置读写 ==========
 function getConfig() {
+  // 从捕获脚本保存的 $persistentStore 读取（zeeho_h5_appId / zeeho_app_appId）
+  let storeApp = { appId: '', appSecret: '' };
+  let storeH5 = { appId: '', appSecret: '' };
+  try {
+    storeApp.appId = $persistentStore.read('zeeho_app_appId') || '';
+    storeApp.appSecret = $persistentStore.read('zeeho_app_appSecret') || '';
+    storeH5.appId = $persistentStore.read('zeeho_h5_appId') || '';
+    storeH5.appSecret = $persistentStore.read('zeeho_h5_appSecret') || '';
+  } catch(e) {}
   try {
     const raw = $.getdata(CK_CONFIG);
     if (raw) {
       const c = JSON.parse(raw);
       return {
-        app: { appId: c.app?.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || DEFAULT_CONFIG.app.appSecret },
-        h5:  { appId: c.h5?.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || DEFAULT_CONFIG.h5.appSecret },
+        // 优先级：看板配置 > 捕获脚本 > 默认值
+        app: { appId: c.app?.appId || storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
+        h5:  { appId: c.h5?.appId || storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
         community: { enablePost: c.community?.enablePost !== false, enableLike: c.community?.enableLike !== false, enableComment: c.community?.enableComment !== false, enableShare: c.community?.enableShare !== false, enableDelete: c.community?.enableDelete !== false }
       };
     }
   } catch(e) {}
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  // 看板无配置时，使用捕获脚本配置 + 默认值
+  return {
+    app: { appId: storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
+    h5:  { appId: storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
+    community: JSON.parse(JSON.stringify(DEFAULT_CONFIG.community))
+  };
 }
 function saveConfig(cfg) {
   try { $.setdata(JSON.stringify(cfg), CK_CONFIG); return true; } catch(e) { return false; }
