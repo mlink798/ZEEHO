@@ -1470,45 +1470,73 @@ function sendResp(status, headers, body) {
     if (!token) {
       error = "请先输入Token";
     } else {
+      const baseHeaders = {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json;charset=UTF-8",
+        "interfaceversion": "2"
+      };
+      // 递归搜索对象中的 userId 字段
+      const findUserId = (obj, depth = 0) => {
+        if (!obj || depth > 5) return "";
+        if (typeof obj === "string" || typeof obj === "number") return "";
+        for (const key of Object.keys(obj)) {
+          const val = obj[key];
+          if (/user.?id|uid|create.?by|owner.?id/i.test(key) && val && typeof val !== "object") {
+            const s = String(val);
+            if (s.length >= 10 && /^\d+$/.test(s)) return s;
+          }
+          if (val && typeof val === "object") {
+            const found = findUserId(val, depth + 1);
+            if (found) return found;
+          }
+        }
+        return "";
+      };
       // 方式1：调用 /setting（不带userId）获取当前用户信息
       try {
         const signH = getSign("app", {}, '', cfg);
-        const res = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json;charset=UTF-8",
-          "interfaceversion": "2",
-          ...signH
-        });
+        const res = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", { ...baseHeaders, ...signH });
         if (res.code == "10000" && res.data) {
           userId = String(res.data.id || res.data.userId || "");
           userName = String(res.data.nickName || "");
         }
+        if (!userId && res.data) userId = findUserId(res.data);
       } catch(e) {}
-      // 方式2：如果方式1失败，从 vehicle/list 响应中提取 userId
+      // 方式2：调用积分接口获取用户信息
       if (!userId) {
         try {
           const signH = getSign("app", {}, '', cfg);
-          const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json;charset=UTF-8",
-            "interfaceversion": "2",
-            ...signH
-          });
-          // 从响应中各种可能的字段提取 userId
-          const d = res.data || {};
-          userId = String(d.userId || d.user_id || d.uid || d.createBy || d.ownerId || "");
-          if (!userId && Array.isArray(d)) {
-            userId = String(d[0]?.userId || d[0]?.user_id || d[0]?.uid || d[0]?.createBy || "");
-          }
-          if (!userId && Array.isArray(d.list)) {
-            userId = String(d.list[0]?.userId || d.list[0]?.user_id || d.list[0]?.uid || "");
-          }
-          if (!userId && Array.isArray(d.records)) {
-            userId = String(d.records[0]?.userId || d.records[0]?.user_id || d.records[0]?.uid || "");
+          const res = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/adjustByShare", { ...baseHeaders, ...signH });
+          if (res && res.data) userId = findUserId(res.data);
+        } catch(e) {}
+      }
+      // 方式3：从 vehicle/list 响应中递归搜索 userId
+      if (!userId) {
+        try {
+          const signH = getSign("app", {}, '', cfg);
+          const res = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", { ...baseHeaders, ...signH });
+          if (res && res.data) userId = findUserId(res.data);
+          // 也搜索整个响应
+          if (!userId && res) userId = findUserId(res);
+        } catch(e) {}
+      }
+      // 方式4：调用 homeRideInfo（需要先获取车辆VIN）
+      if (!userId) {
+        try {
+          const signH = getSign("app", {}, '', cfg);
+          const listRes = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", { ...baseHeaders, ...signH });
+          let vinNo = "";
+          const d = listRes?.data;
+          if (Array.isArray(d)) vinNo = d[0]?.vinNo || d[0]?.frameNo || "";
+          else if (Array.isArray(d?.list)) vinNo = d.list[0]?.vinNo || "";
+          else if (Array.isArray(d?.records)) vinNo = d.records[0]?.vinNo || "";
+          if (vinNo) {
+            const rideRes = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/homeRideInfo?vinNo=${encodeURIComponent(vinNo)}`, { ...baseHeaders, ...signH });
+            if (rideRes && rideRes.data) userId = findUserId(rideRes.data);
           }
         } catch(e) {}
       }
-      if (!userId) error = "无法自动获取用户ID，请手动填写（抓包/setting/{userId}响应data.id）";
+      if (!userId) error = "自动获取失败，请手动填写用户ID（抓包/setting/{userId}响应data.id）";
     }
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: !!userId, userId: userId, userName: userName, error: error }));
     return;
