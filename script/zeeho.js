@@ -5,10 +5,8 @@
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
 [Script]
-# 获取 Cookie（拦截多个接口，自动捕获 userId/Token）
+# 获取 Cookie
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
-http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/social\/cfmotoserversocial\/.*(fans|follower|userInfo|mine) script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie2
-http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/app\/cfmotoserverapp\/vehicle\/list script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie3
 
 # 脚本任务
 cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
@@ -57,11 +55,9 @@ async function main() {
     for (let user of userList) {
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
-
       // 签到
       const integral = (await user.signin()) || 0;
       let integralScore = 0;
-
       if (user.ckStatus) {
         await $.wait(user.getRandomTime());
         // 查看签到记录
@@ -592,160 +588,33 @@ function getPostId(data) {
   }
   return null;
 }
-// 递归搜索对象中的 userId 字段
-function findUserIdInObj(obj, depth = 0) {
-  if (!obj || depth > 6) return "";
-  if (typeof obj === "string" || typeof obj === "number") return "";
-  for (const key of Object.keys(obj)) {
-    const val = obj[key];
-    if (/user.?id|uid|create.?by|owner.?id|id/i.test(key) && val && typeof val !== "object") {
-      const s = String(val);
-      if (s.length >= 10 && /^\d+$/.test(s)) return s;
-    }
-    if (val && typeof val === "object") {
-      const found = findUserIdInObj(val, depth + 1);
-      if (found) return found;
-    }
-  }
-  return "";
-}
-// 递归搜索对象中的昵称
-function findUserNameInObj(obj, depth = 0) {
-  if (!obj || depth > 5) return "";
-  if (typeof obj === "string" || typeof obj === "number") return "";
-  for (const key of Object.keys(obj)) {
-    const val = obj[key];
-    if (/nick.?name|user.?name|name/i.test(key) && val && typeof val === "string" && val.length > 0 && val.length < 30) return val;
-    if (val && typeof val === "object") {
-      const n = findUserNameInObj(val, depth + 1);
-      if (n) return n;
-    }
-  }
-  return "";
-}
 async function getCookie() {
   if ($request && $request.method === 'OPTIONS') return;
 
   const header = ObjectKeys2LowerCase($request.headers);
   const token = header['authorization'];
   const userAgent = header['user-agent'];
-  const reqUrl = $request?.url || "";
   const body = $.toObj($response.body);
-  if (!body || !token) {
+  if (!(body?.data)) {
+    $.msg($.name, `❌获取Cookie失败!`, "")
     return;
   }
 
-  // ========== 识别逻辑：区分自己的ID和别人的ID ==========
-  let userId = "";
-  let userName = "";
-  let isSelf = false; // 标记是否是当前用户自己的信息
-
-  // 方式1：从请求URL路径中提取 userId（最可靠，如 /setting/20251009000440652）
-  const pathMatch = reqUrl.match(/\/setting\/(\d+)/);
-  if (pathMatch && pathMatch[1]) {
-    userId = pathMatch[1];
-    isSelf = true;
-    // 从响应中获取昵称
-    userName = body?.data?.nickName || body?.data?.userName || "";
-    if (!userName && body.data) userName = findUserNameInObj(body.data);
+  const { id, nickName } = body?.data;
+  const newData = {
+    "userId": id,
+    "token": token,
+    "userName": nickName,
+    "userAgent": userAgent
   }
 
-  // 方式2：从请求参数中提取 userId，与响应中的 userId 对比
-  if (!isSelf) {
-    const paramMatch = reqUrl.match(/[?&]userId=(\d+)/);
-    const paramUserId = paramMatch ? paramMatch[1] : "";
-    // 从响应中提取 userId
-    let respUserId = body?.data?.id || body?.data?.userId || "";
-    if (!respUserId && body.data) respUserId = findUserIdInObj(body.data);
-    if (!respUserId && body) respUserId = findUserIdInObj(body);
-
-    if (paramUserId && respUserId) {
-      if (paramUserId === respUserId) {
-        // 请求参数中的 userId 与响应中的 userId 相同，说明是查看自己的信息
-        userId = respUserId;
-        isSelf = true;
-        userName = body?.data?.nickName || body?.data?.userName || "";
-        if (!userName && body.data) userName = findUserNameInObj(body.data);
-      } else {
-        // 请求参数中的 userId 与响应中的 userId 不同，说明是查看别人的信息（如粉丝主页）
-        // 不捕获 userId，只更新 token（通过 token 匹配已有账号）
-        isSelf = false;
-      }
-    } else if (!paramUserId && respUserId) {
-      // 请求中没有 userId 参数，响应中有 userId
-      // 根据接口路径判断是否是当前用户的信息
-      if (/\/setting(\/|$)/.test(reqUrl) || /vehicle\/list/.test(reqUrl)) {
-        // /setting 或 /vehicle/list 接口，响应中的 userId 是当前用户的
-        userId = respUserId;
-        isSelf = true;
-        userName = body?.data?.nickName || body?.data?.userName || "";
-        if (!userName && body.data) userName = findUserNameInObj(body.data);
-      } else {
-        // 其他接口（粉丝列表、关注列表等），响应中的 userId 可能是别人的
-        // 不捕获 userId，只更新 token
-        isSelf = false;
-      }
-    }
-  }
-
-  // ========== 保存逻辑 ==========
   userCookie = userCookie ? JSON.parse(userCookie) : [];
+  const index = userCookie.findIndex(e => e.userId == newData.userId);
 
-  if (isSelf && userId) {
-    // 确认是当前用户自己的信息，先验证Token与userId是否匹配
-    let tokenMatch = false;
-    try {
-      const verifySign = getSign('app', {});
-      const verifyHeaders = {
-        "Authorization": token,
-        "Content-Type": "application/json;charset=UTF-8",
-        "interfaceversion": "2",
-        "user_id": String(userId),
-        ...verifySign
-      };
-      const verifyRes = await Request({
-        url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`,
-        type: "get",
-        headers: verifyHeaders,
-        dataType: "json"
-      });
-      if (verifyRes?.code == "10000" || verifyRes?.code === 10000) {
-        tokenMatch = true;
-      }
-    } catch(e) {}
+  userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
 
-    // 用户ID总是可以存入，Token只有在匹配时才存入
-    const index = userCookie.findIndex(e => String(e.userId) === String(userId));
-    if (index >= 0) {
-      // 账号已存在，更新用户ID和昵称
-      userCookie[index].userId = String(userId);
-      if (userName) userCookie[index].userName = userName;
-      // Token匹配才更新Token，不匹配则保留原有Token（或留空）
-      if (tokenMatch) {
-        userCookie[index].token = token;
-        if (userAgent) userCookie[index].userAgent = userAgent;
-      }
-    } else {
-      // 新账号，用户ID和昵称存入，Token匹配才存Token
-      const newData = {
-        "userId": String(userId),
-        "token": tokenMatch ? token : "",
-        "userName": userName || "未知用户",
-        "userAgent": tokenMatch ? userAgent : ""
-      };
-      userCookie.push(newData);
-    }
-    $.setjson(userCookie, ckName);
-
-    if (tokenMatch) {
-      $.msg($.name, `🎉${userName || "未知用户"}更新token成功!`, ``);
-    } else {
-      // Token不匹配，只存入用户ID，提示用户手动填写Token
-      $.msg($.name, `⚠️${userName || "未知用户"}用户ID已存入，但Token不匹配，请手动填写Token`, ``);
-    }
-  } else {
-    // 不是当前用户自己的信息（如查看粉丝主页），不写入
-  }
+  $.setjson(userCookie, ckName);
+  $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
 }
 
 // ========== 社区任务开关配置 ==========
