@@ -2,14 +2,14 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到并推送 iOS 通知。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
+图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
 # 获取 Cookie
-http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
+http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
 
 # 脚本任务
-cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
+cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, tag=极核
 
 [MITM]
 hostname = tapi.zeehoev.com
@@ -124,6 +124,22 @@ async function main() {
 
         // 汇总到总通知
         $.notifyMsg.push(`「${user.userName}」积分: ${oldScore}+${gain}, 累签: ${count}天`);
+        // 向绑定的Bark API推送签到结果
+        if (user.barkKey) {
+          try {
+            const barkTitle = `✅ ${user.userName} 签到成功`;
+            const barkBody = `积分: ${oldScore}+${gain}=${score}
+连签: ${count}天
+签到: +${integral || 0}
+盲盒: +${integralScore || 0}
+互动: +${interactGain}`;
+            const barkUrl = `https://api.day.app/${user.barkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
+            $httpClient.get(barkUrl, () => {});
+            console.log(`📱 已向绑定Bark推送结果: ${user.barkKey.substring(0,8)}...`);
+          } catch (e) {
+            console.log(`⚠️ Bark推送失败: ${e.message}`);
+          }
+        }
         // 写入运行日志
         addSigninLog({
           time: new Date().toLocaleString("zh-CN", { hour12: false }),
@@ -171,6 +187,7 @@ class UserInfo {
     this.userId = String(user.userId || "").trim();
     this.userName = user.userName;
     this.userAgent = user.userAgent;
+    this.barkKey = user.barkKey || '';
     this.ckStatus = true;
     //请求封装
     this.baseUrl = ``;
