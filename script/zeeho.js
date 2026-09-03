@@ -653,11 +653,19 @@ function addSigninLog(entry) {
 }
 
 function getSign(type, params = {}, body = '') {
-  // 先读取用户在看板配置页保存的签名密钥（zeeho_config），没有则用默认值
+  // 配置优先级：看板配置页(zeeho_config) > 捕获脚本($persistentStore) > 默认值
   let appConfig = {
     appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
     appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
   }
+  // 1. 从捕获脚本保存的 $persistentStore 读取（zeeho_h5_appId / zeeho_app_appId）
+  try {
+    const storeAppId = $persistentStore.read(type === "h5" ? "zeeho_h5_appId" : "zeeho_app_appId");
+    const storeAppSecret = $persistentStore.read(type === "h5" ? "zeeho_h5_appSecret" : "zeeho_app_appSecret");
+    if (storeAppId) appConfig.appId = storeAppId;
+    if (storeAppSecret) appConfig.appSecret = storeAppSecret;
+  } catch(e) {}
+  // 2. 从看板配置页保存的 zeeho_config 读取（优先级最高）
   try {
     const cfgRaw = $.getdata("zeeho_config");
     if (cfgRaw) {
