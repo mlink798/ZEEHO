@@ -138,8 +138,20 @@
         <label>Authorization（Token，不含 Bearer）</label>
         <textarea id="q_token" placeholder="粘贴 UUID 格式的 Token"></textarea>
       </div>
-      <button class="btn btn-success" onclick="queryInfo()" id="queryBtn">发送查询请求</button>
-      <div style="margin-top:10px;font-size:11px;color:#888;line-height:1.6;">💡 查询请求通过 Bark 发送，手机端 Loon 拦截后查询极核 API，结果通过 Bark 通知推送到手机。需 Loon 已启用且面板脚本为最新版。</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-success" onclick="queryInfo()" id="queryBtn" style="flex:1;">查询信息</button>
+        <button class="btn btn-primary" onclick="parseClipboard()" id="parseBtn" style="flex:1;background:#6366f1;">📋 解析剪切板</button>
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">🔔 绑定 Bark API（接收查询结果）</div>
+        <div style="font-size:11px;color:#888;margin-bottom:8px;">填入你自己的 Bark Key，查询结果将推送到这个 Key 对应的设备。查询前自动验证可用性。</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="bindBarkKey" placeholder="你的 Bark Key" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+          <button class="btn btn-primary" style="width:auto;padding:8px 16px;font-size:13px;" onclick="verifyBindKey()">验证</button>
+        </div>
+        <div id="bindKeyResult" style="margin-top:8px;font-size:12px;"></div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#888;line-height:1.6;">💡 仅验证 Token 用极核 API；查询通过 Bark 发送请求，服务端处理后结果通过 Bark 通知推送回手机。</div>
       <div class="result" id="q_result"></div>
       <div id="q_detail"></div>
     </div>
@@ -187,10 +199,33 @@
     </div>
   </div>
 </div>
+    <div class="card" style="margin-top:12px;">
+      <h2>📋 Bark autoCopy 自动复制教程</h2>
+      <p style="font-size:13px;line-height:1.8;color:#555;">
+        查询结果通过 Bark 推送时携带 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">autoCopy=1</code> 参数，
+        推送内容会<strong>自动复制到手机剪切板</strong>，然后在网页点「解析剪切板」即可显示查询结果。
+      </p>
+      <div style="background:#f8f9ff;padding:12px;border-radius:8px;font-size:12px;line-height:2;margin-top:10px;">
+        <strong>使用步骤：</strong><br>
+        1. 在查询页填写 Token 和绑定 Bark Key，点「验证」确认绑定Key可用<br>
+        2. 点「查询信息」，客户端通过自带 Bark API 发送查询请求<br>
+        3. 服务端（Loon）拦截请求，查询极核 API，向绑定 Bark Key 推送结果（带 autoCopy=1）<br>
+        4. 手机收到 Bark 通知，<strong>下拉通知栏</strong>触发自动复制（iOS14.5+长按或下拉即可）<br>
+        5. 回到网页，点「📋 解析剪切板」，查询结果显示在网页上<br><br>
+        <strong>注意事项：</strong><br>
+        · Bark App 需在后台运行，通知权限已开启<br>
+        · iOS14.5 之后需要长按或下拉推送才能触发自动复制<br>
+        · 网页读取剪切板需要浏览器授权（首次会弹窗询问）<br>
+        · 如果解析失败，检查剪切板内容是否为JSON格式
+      </div>
+    </div>
+
 
 <script>
 // ====== 配置 ======
-const BARK_KEY = "qHk3sW4786nfSQxJaH4kne";
+const DEFAULT_BARK_KEY = "qHk3sW4786nfSQxJaH4kne";
+function getBarkKey(){ try{ return localStorage.getItem('zeeho_bark_key')||DEFAULT_BARK_KEY; }catch(e){ return DEFAULT_BARK_KEY; } }
+function setBarkKey(k){ try{ localStorage.setItem('zeeho_bark_key',k); }catch(e){} }
 const H5_APP_ID = "Sw5F9uJi";
 const H5_APP_SECRET = "46870a8f678a09109468f5b0168818b91c292845";
 const APP_APP_ID = "S7qPWPU1";
@@ -368,7 +403,7 @@ async function uploadConfig(){
   const btn=document.getElementById('uploadBtn');
   btn.disabled=true;btn.textContent='上传中...';
   try{
-    const barkUrl=`https://api.day.app/${BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
+    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
     const res=await fetch(barkUrl);
     const data=await res.json();
     if(data.code===200){
@@ -405,21 +440,24 @@ function parseSignInfo(data,today){
   };
 }
 
-// 查询：通过 Bark 发送查询请求，服务端(Loon)拦截后查极核API，结果通过 Bark 推送回来
+// 查询：用自带API发送请求，参数带callbackKey=绑定API，服务端向绑定API推送结果
 async function queryInfo(){
   const token=cleanToken(document.getElementById('q_token').value);
   if(!token){showResult('q_result','error','❌ 请输入 Authorization');return;}
   if(!UUID_RE.test(token)){showResult('q_result','error','❌ Token 格式错误，应为 UUID 格式');return;}
+  const bindKey=document.getElementById('bindBarkKey').value.trim();
+  if(!bindKey){showResult('q_result','error','❌ 请先填写并验证绑定 Bark API（接收查询结果用）');return;}
   const btn=document.getElementById('queryBtn');
   btn.disabled=true;btn.textContent='发送中...';
-  showResult('q_result','info','⏳ 正在发送查询请求...');
+  showResult('q_result','info','⏳ 正在通过自带Bark API发送查询请求...');
+  document.getElementById('q_detail').innerHTML='';
   try{
-    // 通过 Bark 推送查询请求，Loon 拦截 action=query 后执行查询，结果再通过 Bark 推送
-    const barkUrl=`https://api.day.app/${BARK_KEY}/极核查询请求?action=query&token=${encodeURIComponent(token)}`;
+    // 用自带API发送请求，参数带callbackKey=绑定API
+    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核查询请求?action=query&token=${encodeURIComponent(token)}&callbackKey=${encodeURIComponent(bindKey)}`;
     const res=await fetch(barkUrl);
     const data=await res.json();
     if(data.code===200){
-      showResult('q_result','success','✅ 查询请求已发送<br><br>📱 结果将通过 <b>Bark 通知</b> 推送到手机<br>请下拉通知栏查看（含昵称、连签、积分、车辆电量续航）<br><br>⚠️ 需手机端 Loon 已启用且面板脚本为最新版');
+      showResult('q_result','success','✅ 查询请求已发送<br><br>📤 自带API：已发送请求<br>📥 绑定API：'+bindKey.substring(0,8)+'...（接收结果）<br><br>📱 结果将通过 <b>绑定 Bark API</b> 推送到手机<br>请下拉通知栏查看（含昵称、连签、积分、车辆电量续航）<br><br>💡 需服务端已配置查询拦截（如Loon面板脚本）');
     }else{
       showResult('q_result','error','❌ Bark 推送失败：'+JSON.stringify(data));
     }
@@ -428,6 +466,86 @@ async function queryInfo(){
   }
   btn.disabled=false;btn.textContent='查询信息';
 }
+
+// 解析剪切板中的查询结果（Bark autoCopy 自动复制的JSON）
+async function parseClipboard(){
+  const resultEl=document.getElementById('q_result');
+  const detailEl=document.getElementById('q_detail');
+  try{
+    const text=await navigator.clipboard.readText();
+    if(!text||!text.trim()){
+      showResult('q_result','error','❌ 剪切板为空<br><br>💡 请先确保：1.服务端已推送结果 2.Bark通知已自动复制到剪切板 3.下拉通知栏触发复制');
+      return;
+    }
+    // 尝试解析JSON
+    let data;
+    try{
+      data=JSON.parse(text.trim());
+    }catch(e){
+      // 不是JSON，直接显示文本
+      showResult('q_result','info','📋 剪切板内容（非JSON格式）：<br><br>'+text.replace(/\n/g,'<br>'));
+      detailEl.innerHTML='';
+      return;
+    }
+    // 解析JSON并渲染
+    let html='<div class="info-grid">';
+    html+='<div class="info-item"><div class="info-val">'+(data.nickName||'-')+'</div><div class="info-label">昵称</div></div>';
+    html+='<div class="info-item"><div class="info-val" style="font-size:13px;">'+(data.userId||'-')+'</div><div class="info-label">用户ID</div></div>';
+    html+='</div>';
+    html+='<div class="info-grid">';
+    html+='<div class="info-item"><div class="info-val">'+(data.continueDays||0)+'</div><div class="info-label">连签天数</div></div>';
+    html+='<div class="info-item"><div class="info-val" style="font-size:13px;">'+(data.signedToday?'✅ 已签 +'+(data.todayScore||0):'⏳ 今日未签')+'</div><div class="info-label">今日状态</div></div>';
+    html+='<div class="info-item"><div class="info-val">'+(data.totalScore||0)+'</div><div class="info-label">总积分</div></div>';
+    html+='</div>';
+    if(data.vehicles&&Array.isArray(data.vehicles)&&data.vehicles.length>0){
+      for(const v of data.vehicles){
+        html+='<div style="background:#f8f9ff;padding:10px;border-radius:8px;font-size:12px;text-align:left;margin-top:8px;line-height:1.9;">';
+        html+='<strong style="font-size:13px;">'+(v.name||'车辆')+'</strong><br>';
+        html+='VIN：'+(v.vin||'-')+'<br>';
+        html+='车牌：'+(v.licensePlate||'未绑定');
+        html+='</div>';
+      }
+    }
+    showResult('q_result','success','✅ 已解析剪切板中的查询结果');
+    detailEl.innerHTML='<div class="card" style="margin-top:10px;"><h2>查询结果（来自剪切板）</h2>'+html+'</div>';
+  }catch(e){
+    if(e.name==='NotAllowedError'){
+      showResult('q_result','error','❌ 无法读取剪切板<br><br>💡 请在浏览器设置中允许此网站读取剪切板权限，或手动长按粘贴到输入框');
+    }else{
+      showResult('q_result','error','❌ 读取剪切板失败：'+e.message);
+    }
+  }
+}
+
+// 验证绑定 Bark API 可用性
+async function verifyBindKey(){
+  const k=document.getElementById('bindBarkKey').value.trim();
+  const resultEl=document.getElementById('bindKeyResult');
+  if(!k){resultEl.innerHTML='<span style="color:#ef4444;">❌ 请输入 Bark Key</span>';return;}
+  resultEl.innerHTML='<span style="color:#f59e0b;">⏳ 验证中...</span>';
+  try{
+    const res=await fetch(`https://api.day.app/${k}/极核绑定验证/Bark API绑定成功，查询结果将推送到此设备`);
+    const data=await res.json();
+    if(data.code===200){
+      resultEl.innerHTML='<span style="color:#10b981;">✅ 验证成功，请查看手机通知（绑定Key：'+k.substring(0,8)+'...）</span>';
+      // 保存到localStorage
+      try{localStorage.setItem('zeeho_bind_bark_key',k);}catch(e){}
+    }else{
+      resultEl.innerHTML='<span style="color:#ef4444;">❌ 验证失败：'+JSON.stringify(data)+'</span>';
+    }
+  }catch(e){
+    resultEl.innerHTML='<span style="color:#ef4444;">❌ 验证失败：'+e.message+'</span>';
+  }
+}
+
+// 页面加载时恢复绑定Key
+window.addEventListener('load',function(){
+  try{
+    const k=localStorage.getItem('zeeho_bind_bark_key');
+    if(k)document.getElementById('bindBarkKey').value=k;
+  }catch(e){}
+});
+
 </script>
 </body>
 </html>
