@@ -743,6 +743,19 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <span class="day-mark">${d.signed ? '✓' : '—'}</span>
       </div>`).join('');
 
+    // 充电状态判断和预计充满时间
+    const v = a.vehicle || {};
+    const isCharging = v.chargeState && v.chargeState !== "未充电";
+    let chargeEta = "";
+    if (isCharging && v.voltage && v.current && v.current > 0 && v.batteryPercent < 100) {
+      const batteryCap = 1440; // 估算72V20Ah
+      const remainWh = (100 - v.batteryPercent) / 100 * batteryCap;
+      const powerW = v.voltage * v.current;
+      const hours = remainWh / powerW;
+      if (hours >= 1) chargeEta = "约" + hours.toFixed(1) + "小时充满";
+      else chargeEta = "约" + Math.round(hours * 60) + "分钟充满";
+    }
+
     return `
     <div class="acc-card ${a.error ? 'acc-error' : ''}">
       <div class="acc-head">
@@ -771,11 +784,22 @@ function renderDashboard(accounts, data, cfg, updateTime) {
       </div>
       ${a.vehicle && !a.vehicle.hasVehicle ? `<div class="no-vehicle-tip">🚗 该账号未绑定车辆</div>` : ''}
       ${a.vehicle && a.vehicle.hasVehicle ? `
-      <div class="vehicle-section">
+      <div class="vehicle-section" onclick="showVehicleDetail(${idx})" style="cursor:pointer">
         <div class="vehicle-label">
           <span>🚗 ${a.vehicle.vehicleName || "车辆"} ${a.vehicle.vinNo ? `<span class="vin-no">${a.vehicle.vinNo}</span>` : ""}</span>
-          <span class="vehicle-charge ${a.vehicle.chargeState && a.vehicle.chargeState !== "未充电" ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
+          <span class="vehicle-charge ${isCharging ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
         </div>
+        ${isCharging ? `
+        <div class="charge-progress-row">
+          <div class="charge-progress-info">
+            <span class="charge-icon">⚡</span>
+            <span class="charge-percent">${a.vehicle.batteryPercent}%</span>
+            ${chargeEta ? `<span class="charge-eta">${chargeEta}</span>` : ""}
+          </div>
+          <div class="charge-progress-bar">
+            <div class="charge-progress-fill" style="width:${a.vehicle.batteryPercent}%"></div>
+          </div>
+        </div>` : ""}
         <div class="vehicle-kpi">
           <div class="v-kpi">
             <div class="v-kpi-val" style="color:${a.vehicle.batteryPercent <= 20 ? "#EF4444" : a.vehicle.batteryPercent <= 50 ? "#F59E0B" : "#0891B2"}">${a.vehicle.batteryPercent}%</div>
@@ -802,11 +826,11 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <div class="tire-item"><span class="tire-icon">🛞</span>前 ${a.vehicle.frontPressure || "-"} ${a.vehicle.frontTemp ? `<span class="tire-temp">${a.vehicle.frontTemp}</span>` : ""}</div>
           <div class="tire-item"><span class="tire-icon">🛞</span>后 ${a.vehicle.rearPressure || "-"} ${a.vehicle.rearTemp ? `<span class="tire-temp">${a.vehicle.rearTemp}</span>` : ""}</div>
         </div>` : ""}
-        ${(a.vehicle.voltage || a.vehicle.current || a.vehicle.batteryTemp) ? `
+        ${(a.vehicle.voltage || (isCharging && a.vehicle.current) || a.vehicle.batteryTemp) ? `
         <div class="battery-row">
-          <div class="battery-item"><span class="battery-icon">⚡</span>电压 ${a.vehicle.voltage ? a.vehicle.voltage.toFixed(1) + "V" : "-"}</div>
-          <div class="battery-item"><span class="battery-icon">🔌</span>电流 ${a.vehicle.current ? a.vehicle.current.toFixed(1) + "A" : "-"}</div>
-          <div class="battery-item"><span class="battery-icon">🌡️</span>电池温度 ${a.vehicle.batteryTemp ? a.vehicle.batteryTemp.toFixed(0) + "°C" : "-"}</div>
+          ${a.vehicle.voltage ? `<div class="battery-item"><span class="battery-icon">⚡</span>电压 ${a.vehicle.voltage.toFixed(1)}V</div>` : ""}
+          ${isCharging && a.vehicle.current ? `<div class="battery-item"><span class="battery-icon">🔌</span>电流 ${a.vehicle.current.toFixed(1)}A</div>` : ""}
+          ${a.vehicle.batteryTemp ? `<div class="battery-item"><span class="battery-icon">🌡️</span>电池温度 ${a.vehicle.batteryTemp.toFixed(0)}°C</div>` : ""}
         </div>` : ""}
         ${a.vehicle.serviceEndDate ? `
         <div class="service-row">
@@ -899,6 +923,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .battery-row{display:flex;gap:12px;margin-bottom:6px;flex-wrap:wrap}
 .battery-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px;background:#F8FAFC;padding:4px 8px;border-radius:6px}
 .battery-icon{font-size:12px}
+.charge-progress-row{margin-bottom:8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px}
+.charge-progress-info{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.charge-icon{font-size:14px}
+.charge-percent{font-size:13px;font-weight:700;color:#059669}
+.charge-eta{font-size:11px;color:#059669;background:#D1FAE5;padding:2px 8px;border-radius:10px}
+.charge-progress-bar{height:8px;background:#E2E8F0;border-radius:4px;overflow:hidden}
+.charge-progress-fill{height:100%;background:linear-gradient(90deg,#10B981,#34D399);border-radius:4px;transition:width .5s ease}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
 .loc-time{color:#CBD5E1;font-size:9px}
 .service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
@@ -935,6 +966,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <button class="nav-btn" onclick="switchTab('logs')">日志</button>
     <a href="/config" class="nav-btn">配置</a>
     <button class="nav-btn primary" onclick="runAllSignin()">立即签到</button>
+    <button class="nav-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="background:#0891B2;color:#fff">自动刷新(60s)</button>
     <button class="nav-btn" onclick="location.reload()">刷新</button>
   </div>
 </div>
@@ -976,8 +1008,49 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
 </div>
 
+<!-- 车辆详情弹窗 -->
+<div id="vehicleModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:16px;font-weight:700" id="vModalTitle">车辆详情</h3>
+      <button onclick="closeVehicleModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94A3B8">×</button>
+    </div>
+    <div id="vehicleDetailContent"></div>
+  </div>
+</div>
+
 <div class="footer">极核 ZEEHO 签到看板 · 作者 <a href="https://github.com/mlink798">lucky</a> · 数据来自代理工具实时 API</div>
 <script>
+var vehicleDataList = ${JSON.stringify(data.map(function(a){ return a.vehicle || {}; }))};
+var autoRefreshTimer = null;
+var autoRefreshCountdown = 60;
+function startAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshCountdown = 60;
+  autoRefreshTimer = setInterval(function() {
+    autoRefreshCountdown--;
+    var btn = document.getElementById('autoRefreshBtn');
+    if (btn) btn.textContent = '自动刷新(' + autoRefreshCountdown + 's)';
+    if (autoRefreshCountdown <= 0) {
+      location.reload();
+    }
+  }, 1000);
+}
+function toggleAutoRefresh() {
+  var btn = document.getElementById('autoRefreshBtn');
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+    btn.textContent = '开启自动刷新';
+    btn.style.background = '#fff';
+    btn.style.color = '#475569';
+  } else {
+    startAutoRefresh();
+    btn.style.background = '#0891B2';
+    btn.style.color = '#fff';
+  }
+}
+startAutoRefresh();
 function switchTab(tab) {
   document.getElementById('dashboardPage').style.display = tab === 'dashboard' ? 'block' : 'none';
   document.getElementById('logsPage').style.display = tab === 'logs' ? 'block' : 'none';
@@ -1035,6 +1108,32 @@ function showSigninResult(d) {
 }
 function closeModal() {
   document.getElementById('signinModal').style.display = 'none';
+}
+var vehicleDataList = [];
+function showVehicleDetail(idx) {
+  var v = vehicleDataList[idx];
+  if (!v) return;
+  var modal = document.getElementById('vehicleModal');
+  var content = document.getElementById('vehicleDetailContent');
+  document.getElementById('vModalTitle').textContent = v.vehicleName || '车辆详情';
+  var rows = [];
+  if (v.vinNo) rows.push('<div class="v-detail-row"><span class="v-detail-label">车架号</span><span class="v-detail-val" style="font-family:monospace;font-size:12px">'+v.vinNo+'</span></div>');
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">充电状态</span><span class="v-detail-val">'+(v.chargeState || '未充电')+'</span></div>');
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">电量SOC</span><span class="v-detail-val" style="font-weight:700;color:'+(v.batteryPercent<=20?'#EF4444':v.batteryPercent<=50?'#F59E0B':'#0891B2')+'">'+v.batteryPercent+'%</span></div>');
+  if (v.voltage) rows.push('<div class="v-detail-row"><span class="v-detail-label">电压</span><span class="v-detail-val">'+v.voltage.toFixed(1)+'V</span></div>');
+  if (v.current) rows.push('<div class="v-detail-row"><span class="v-detail-label">电流</span><span class="v-detail-val">'+v.current.toFixed(1)+'A</span></div>');
+  if (v.batteryTemp) rows.push('<div class="v-detail-row"><span class="v-detail-label">电池温度</span><span class="v-detail-val">'+v.batteryTemp.toFixed(0)+'°C</span></div>');
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">剩余续航</span><span class="v-detail-val">'+v.residualRangeKm+'km</span></div>');
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">今日骑行</span><span class="v-detail-val">'+(v.todayDistance?v.todayDistance.toFixed(1):0)+'km / '+(v.todayDuration||0)+'min</span></div>');
+  if (v.frontPressure || v.rearPressure) rows.push('<div class="v-detail-row"><span class="v-detail-label">胎压</span><span class="v-detail-val">前'+(v.frontPressure||'-')+' / 后'+(v.rearPressure||'-')+'</span></div>');
+  if (v.address) rows.push('<div class="v-detail-row"><span class="v-detail-label">车辆位置</span><span class="v-detail-val" style="font-size:12px">'+v.address+'</span></div>');
+  if (v.locationTime) rows.push('<div class="v-detail-row"><span class="v-detail-label">最后定位</span><span class="v-detail-val" style="font-size:11px;color:#94A3B8">'+v.locationTime+'</span></div>');
+  if (v.serviceEndDate) rows.push('<div class="v-detail-row"><span class="v-detail-label">服务到期</span><span class="v-detail-val">'+v.serviceEndDate+(v.serviceStatus==="0"?' (剩余'+v.serviceRemainDays+'天)':'')+'</span></div>');
+  content.innerHTML = '<div class="v-detail-container">'+rows.join('')+'</div><style>.v-detail-container{display:flex;flex-direction:column;gap:0}.v-detail-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F1F5F9}.v-detail-row:last-child{border-bottom:none}.v-detail-label{font-size:12px;color:#64748B;font-weight:500}.v-detail-val{font-size:13px;color:#0F172A;font-weight:600}</style>';
+  modal.style.display = 'flex';
+}
+function closeVehicleModal() {
+  document.getElementById('vehicleModal').style.display = 'none';
 }
 function showToast(msg, type) {
   var t = document.createElement('div');
