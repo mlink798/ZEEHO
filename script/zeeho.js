@@ -5,8 +5,10 @@
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
 [Script]
-# 获取 Cookie
+# 获取 Cookie（拦截多个接口，自动捕获 userId/Token）
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
+http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/social\/cfmotoserversocial\/.*(fans|follower|userInfo|mine) script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie2
+http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/app\/cfmotoserverapp\/vehicle\/list script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie3
 
 # 脚本任务
 cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
@@ -588,6 +590,37 @@ function getPostId(data) {
   }
   return null;
 }
+// 递归搜索对象中的 userId 字段
+function findUserIdInObj(obj, depth = 0) {
+  if (!obj || depth > 6) return "";
+  if (typeof obj === "string" || typeof obj === "number") return "";
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (/user.?id|uid|create.?by|owner.?id|id/i.test(key) && val && typeof val !== "object") {
+      const s = String(val);
+      if (s.length >= 10 && /^\d+$/.test(s)) return s;
+    }
+    if (val && typeof val === "object") {
+      const found = findUserIdInObj(val, depth + 1);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+// 递归搜索对象中的昵称
+function findUserNameInObj(obj, depth = 0) {
+  if (!obj || depth > 5) return "";
+  if (typeof obj === "string" || typeof obj === "number") return "";
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (/nick.?name|user.?name|name/i.test(key) && val && typeof val === "string" && val.length > 0 && val.length < 30) return val;
+    if (val && typeof val === "object") {
+      const n = findUserNameInObj(val, depth + 1);
+      if (n) return n;
+    }
+  }
+  return "";
+}
 async function getCookie() {
   if ($request && $request.method === 'OPTIONS') return;
 
@@ -595,21 +628,31 @@ async function getCookie() {
   const token = header['authorization'];
   const userAgent = header['user-agent'];
   const body = $.toObj($response.body);
-  if (!(body?.data)) {
-    $.msg($.name, `❌获取Cookie失败!`, "")
+  if (!body) {
     return;
   }
 
-  const { id, nickName } = body?.data;
+  // 优先从 body.data.id 获取（setting接口），失败则递归搜索整个响应
+  let userId = body?.data?.id || body?.data?.userId || "";
+  let userName = body?.data?.nickName || body?.data?.userName || "";
+  if (!userId && body.data) userId = findUserIdInObj(body.data);
+  if (!userId && body) userId = findUserIdInObj(body);
+  if (!userName && body.data) userName = findUserNameInObj(body.data);
+  if (!userName && body) userName = findUserNameInObj(body);
+
+  if (!userId || !token) {
+    return;
+  }
+
   const newData = {
-    "userId": id,
+    "userId": String(userId),
     "token": token,
-    "userName": nickName,
+    "userName": userName || "未知用户",
     "userAgent": userAgent
   }
 
   userCookie = userCookie ? JSON.parse(userCookie) : [];
-  const index = userCookie.findIndex(e => e.userId == newData.userId);
+  const index = userCookie.findIndex(e => String(e.userId) === String(newData.userId));
 
   userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
 
