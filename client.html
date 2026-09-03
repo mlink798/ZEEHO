@@ -101,15 +101,20 @@
       <h2>上传账号配置</h2>
       <div class="form-item">
         <label>账号名称（昵称/备注）</label>
-        <input type="text" id="up_name" placeholder="例如：lucky798">
+        <input type="text" id="up_name" placeholder="例如：lucky798" oninput="onFormInput()">
       </div>
       <div class="form-item">
-        <label>用户 ID（user_id）</label>
-        <input type="text" id="up_userId" placeholder="例如：20251009000440652">
+        <label>用户 ID（验证后自动获取，无需手动填写）</label>
+        <input type="text" id="up_userId" placeholder="点击「本地验证」后自动获取" readonly style="background:#f5f5f5;color:#666;">
       </div>
       <div class="form-item">
         <label>Authorization（Token，不含 Bearer）</label>
-        <textarea id="up_token" placeholder="粘贴 UUID 格式的 Token"></textarea>
+        <textarea id="up_token" placeholder="粘贴 UUID 格式的 Token" oninput="onFormInput()"></textarea>
+      </div>
+      <div class="form-item">
+        <label>Bark API（接收签到结果通知，可选）</label>
+        <input type="text" id="up_barkKey" placeholder="你的 Bark Key，如 8hLxWX4paYMDKrmtNj9PqZ" oninput="onFormInput()">
+        <div style="font-size:11px;color:#888;margin-top:4px;">签到成功后，服务端将向这个 Bark Key 推送签到结果通知。不填则不推送。</div>
       </div>
       <div class="btn-row">
         <button class="btn btn-outline" onclick="validateToken()" id="validateBtn">① 本地验证</button>
@@ -120,12 +125,13 @@
     <div class="card">
       <h2>使用流程</h2>
       <div class="tutorial">
-        <div class="step">1. 填写账号名称、用户ID、Authorization</div>
-        <div class="step">2. 点击「本地验证」：先离线校验格式，再联网验证 Token（直连失败自动走代理，<b>不需要 Loon</b>）</div>
-        <div class="step">3. 验证通过后「Bark 上传」按钮才会解锁</div>
+        <div class="step">1. 填写账号名称（可选）、Authorization（Token）、Bark API（可选，接收签到结果）</div>
+        <div class="step">2. 点击「本地验证」：自动调用极核 API 获取用户ID和昵称（直连失败自动走代理，<b>不需要 Loon</b>）</div>
+        <div class="step">⚠️ 验证通过后如修改任何内容，必须重新验证才能上传</div>
+        <div class="step">3. 验证通过后用户ID自动填充，「Bark 上传」按钮解锁</div>
         <div class="step">4. 点击「Bark 上传」推送到手机</div>
         <div class="step">5. 手机端 Loon 拦截 Bark 请求，保存配置到面板并运行签到</div>
-        <div class="warn">⚠️ 验证在客户端本地完成，不依赖 Loon；只有最后一步保存配置需要手机开着 Loon</div>
+        <div class="warn">⚠️ 验证和获取用户ID在客户端本地完成，不依赖 Loon；只有最后一步保存配置需要手机开着 Loon</div>
       </div>
     </div>
   </div>
@@ -193,6 +199,31 @@ const H5_APP_ID = "Sw5F9uJi";
 const H5_APP_SECRET = "46870a8f678a09109468f5b0168818b91c292845";
 const APP_APP_ID = "S7qPWPU1";
 const APP_APP_SECRET = "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
+
+// 获取当前输入内容的哈希（用于检测修改）
+function getCurrentContentHash(){
+  const name=document.getElementById('up_name').value;
+  const userId=document.getElementById('up_userId').value;
+  const token=document.getElementById('up_token').value;
+  const barkKey=document.getElementById('up_barkKey').value;
+  return name+'|'+userId+'|'+token+'|'+barkKey;
+}
+
+// 输入框内容修改时，如果已验证过，则禁用上传按钮
+function setupContentWatch(){
+  const fields=['up_name','up_token','up_barkKey'];
+  fields.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){
+      el.addEventListener('input',function(){
+        if(window._validatedContent && window._validatedContent!==getCurrentContentHash()){
+          document.getElementById('uploadBtn').disabled=true;
+          showResult('up_result','info','⚠️ 内容已修改，请重新点击「本地验证」');
+        }
+      });
+    }
+  });
+}
 
 function switchTab(name) {
   const tabs=['upload','query','tutorial'];
@@ -290,6 +321,25 @@ function makeSign(type,queryStr){
 
 // UUID / 用户ID 格式校验（纯本地，不需要网络、不需要Loon）
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let _validatedHash=null; // 记录验证通过时的内容哈希
+
+// 计算当前表单内容的简单哈希（用于检测修改）
+function getFormHash(){
+  return [
+    document.getElementById('up_name').value,
+    document.getElementById('up_userId').value,
+    document.getElementById('up_token').value,
+    document.getElementById('up_barkKey').value
+  ].join('|');
+}
+// 输入框内容变化时，如果已验证过则禁用上传按钮，提示重新验证
+function onFormInput(){
+  if(_validatedHash!==null && getFormHash()!==_validatedHash){
+    document.getElementById('uploadBtn').disabled=true;
+    showResult('up_result','info','⚠️ 内容已修改，请重新点击「本地验证」');
+  }
+}
+
 function localFormatCheck(userId,token){
   if(!UUID_RE.test(token)) return {ok:false,msg:'Token 格式错误，应为 UUID（如 f4f49d9c-e558-4887-a139-dffa9068c4f9），请检查是否多复制了 Bearer 或空格'};
   if(!/^\d{6,}$/.test(userId)) return {ok:false,msg:'用户ID 格式错误，应为纯数字（如 20251009000440652）'};
@@ -325,7 +375,7 @@ async function validateToken(){
   const userId=document.getElementById('up_userId').value.trim();
   const token=cleanToken(document.getElementById('up_token').value);
   if(!token){showResult('up_result','error','❌ 请输入 Authorization');return;}
-  if(!userId){showResult('up_result','error','❌ 请输入用户ID');return;}
+  if(!userId){showResult('up_result','error','❌ 请先点击「本地验证」获取用户ID');return;}
 
   // 第1层：纯本地格式校验（离线即可，不需要Loon/网络）
   const fmt=localFormatCheck(userId,token);
@@ -343,8 +393,14 @@ async function validateToken(){
         showResult('up_result','error',`❌ 用户ID不匹配<br>填写ID：${userId}<br>Token实际ID：${returnedId}<br>昵称：${nickName}`);
       }else{
         if(!name&&nickName)document.getElementById('up_name').value=nickName;
-        showResult('up_result','success',`✅ 验证通过（格式+联网双重校验）<br>昵称：${nickName}<br>用户ID：${returnedId||userId}<br>「Bark 上传」已解锁`);
+        // 自动填充用户ID
+        if(returnedId)document.getElementById('up_userId').value=returnedId;
+        // 记录验证通过时的内容哈希
+        _validatedHash=getFormHash();
+        showResult('up_result','success',`✅ 验证通过，已自动获取用户信息<br>昵称：${nickName}<br>用户ID：${returnedId||userId}<br>「Bark 上传」已解锁<br><br>💡 如需修改内容，请重新验证`);
         document.getElementById('uploadBtn').disabled=false;
+      // 记录验证通过时的内容哈希
+      window._validatedContent=getCurrentContentHash();
       }
     }else{
       // 联网返回业务错误：Token确实无效
@@ -366,7 +422,7 @@ async function uploadConfig(){
   const btn=document.getElementById('uploadBtn');
   btn.disabled=true;btn.textContent='上传中...';
   try{
-    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
+    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}${barkKey?'&barkKey='+encodeURIComponent(barkKey):''}`;
     const res=await fetch(barkUrl);
     const data=await res.json();
     if(data.code===200){
@@ -456,7 +512,7 @@ function renderLocalAccounts(){
     let html='';
     accounts.forEach((acc,i)=>{
       html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;">';
-      html+='<div style="flex:1;"><strong>'+(acc.userName||'账号'+(i+1))+'</strong><br><span style="font-size:11px;color:#888;">ID:'+acc.userId+' · Token:'+(acc.token||'').substring(0,8)+'...</span></div>';
+      html+='<div style="flex:1;"><strong>'+(acc.userName||'账号'+(i+1))+'</strong><br><span style="font-size:11px;color:#888;">ID:'+acc.userId+' · Token:'+(acc.token||'').substring(0,8)+'...'+(acc.barkKey?' · Bark:'+acc.barkKey.substring(0,8)+'...':'')+'</span></div>';
       html+='<div style="display:flex;gap:6px;margin-left:8px;">';
       html+='<button class="btn btn-primary" style="width:auto;padding:4px 10px;font-size:11px;" onclick="fillAccount('+i+')">填入</button>';
       html+='<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#fee2e2;color:#991b1b;" onclick="deleteLocalAccount('+i+')">删除</button>';
@@ -477,7 +533,10 @@ function fillAccount(index){
       document.getElementById('up_name').value=acc.userName||'';
       document.getElementById('up_userId').value=acc.userId||'';
       document.getElementById('up_token').value=acc.token||'';
-      document.getElementById('uploadBtn').disabled=false;
+      document.getElementById('up_barkKey').value=acc.barkKey||'';
+      _validatedHash=null; // 填入后需要重新验证
+      document.getElementById('uploadBtn').disabled=true;
+      showResult('up_result','info','✅ 已填入账号：'+(acc.userName||'')+'，请点击「本地验证」');
       showResult('up_result','info','✅ 已填入账号：'+(acc.userName||'')+'，可直接验证或上传');
     }
   }catch(e){}
@@ -498,11 +557,8 @@ function deleteLocalAccount(index){
 
 // 页面加载时渲染本地账号列表
 window.addEventListener('load',function(){
-  try{
-    const k=localStorage.getItem('zeeho_bind_bark_key');
-    if(k)document.getElementById('bindBarkKey').value=k;
-  }catch(e){}
   renderLocalAccounts();
+  setupContentWatch();
 });
 
 
