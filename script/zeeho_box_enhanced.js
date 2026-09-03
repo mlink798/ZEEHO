@@ -7,7 +7,7 @@
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
-# 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
+# 看板+捕获：拦截 zeeho.box 显示面板，同时拦极核API自动捕获 appId/appSecret
 http-request ^https?://(zeeho\.box|.*zeehoev\.com|.*api\.day\.app)/.* script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
