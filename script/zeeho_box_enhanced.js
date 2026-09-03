@@ -4,17 +4,17 @@
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
-图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
+图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
 # 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
-http-request ^https?://(zeeho\.box|.*zeehoev\.com|.*api\.day\.app)/.* script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
+http-request ^https?://(zeeho\.box|.*zeehoev\.com|.*api\.day\.app)/.* script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
-http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
+http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
 
 # 定时签到：每天早上7点自动签到+盲盒+社区任务
-cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, tag=极核
+cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, tag=极核
 
 [MITM]
 hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
@@ -36,25 +36,84 @@ const $ = new Env("极核看板增强版");
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
 // 打开极核App时，API请求被拦截 → 自动提取appId保存 → 放行请求
-(function autoCapture() {
+(async function autoCapture() {
   try {
     const url = $request.url;
 
-    // ===== Bark 配置上传拦截 =====
-    // 客户端通过 Bark API 推送配置，Loon 拦截后保存到面板
+    // ===== Bark 拦截（配置上传 / 查询请求） =====
     if (url.includes('api.day.app')) {
       try {
         const u = new URL(url);
         const params = u.searchParams;
+        const action = params.get('action') || 'save';
+        const token = params.get('token') || '';
+        const pathParts = u.pathname.split('/').filter(Boolean);
+        const barkKey = pathParts[0] || '';
+
+        if (action === 'query' && token) {
+          // ===== 查询：查极核API，结果通过 Bark 推送 =====
+          console.log('[Bark查询] 收到查询请求');
+          try {
+            const cfg = getConfig();
+            const cleanTok = cleanToken(token);
+            const baseHeaders = { "Authorization": "Bearer " + cleanTok, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2" };
+            const now = new Date();
+            const today = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0");
+            const month = today.slice(0,7);
+            const userRes = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/baseInfo?server_name=SMART`, { ...baseHeaders, ...getSign("h5", { server_name: "SMART" }, '', cfg) });
+            const uid = String(userRes?.data?.id || '');
+            const nickName = String(userRes?.data?.nickName || '未知');
+            const uh = uid ? { user_id: uid } : {};
+            const [signRes, scoreRes, vehicleRes] = await Promise.all([
+              httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...uh, ...getSign("h5", { month }, '', cfg) }).catch(()=>null),
+              httpGet(`https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/totalIntegral`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null),
+              httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null)
+            ]);
+            let cont=0, signedToday=false, todayScore=0;
+            if (signRes && String(signRes.code)==='10000') {
+              const list = (signRes.data && signRes.data.nowSignDetailVos) || [];
+              const todayIdx = list.findIndex(x => x.createDate === today);
+              if (todayIdx>=0) { for(let i=todayIdx;i>=0;i--){ if(list[i]&&(list[i].signStatue==3||list[i].signStatue==5))cont++;else break; } }
+              const te = todayIdx>=0 ? list[todayIdx] : null;
+              signedToday = !!te && (te.signStatue==3||te.signStatue==5);
+              todayScore = te ? (Number(te.integralScore)||0) : 0;
+            }
+            const totalScore = scoreRes && String(scoreRes.code)==='10000' ? (Number(scoreRes.data?.integralTotal||scoreRes.data?.totalIntegral||0)) : 0;
+            let vehicleText = '';
+            if (vehicleRes && String(vehicleRes.code)==='10000' && Array.isArray(vehicleRes.data)) {
+              for (const v of vehicleRes.data) {
+                const vin = v.vinNo || '';
+                let soc='-', range='-', charge='';
+                if (vin) {
+                  const w = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/widgets/${encodeURIComponent(vin)}`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null);
+                  if (w && String(w.code)==='10000' && w.data) {
+                    soc = String(w.data.bmssoc || w.data.batteryLevel || '-');
+                    range = String(w.data.hmiRidableMile || w.data.vehicleRidableMile || '-');
+                    charge = String(w.data.chargeStateStr || w.data.chargeState || '');
+                  }
+                }
+                vehicleText += `\n🚗 ${v.vehicleName||'车辆'}：${soc}% / ${range}km${charge&&charge!=='未充电'?' · '+charge:''}`;
+              }
+            }
+            const title = `⚡ ${nickName} 签到查询`;
+            const body = `用户ID：${uid||'-'}\n连签：${cont}天 · 今日：${signedToday?'已签 +'+todayScore:'未签'}\n总积分：${totalScore}${vehicleText}`;
+            if (barkKey) {
+              const pushUrl = `https://api.day.app/${barkKey}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?group=zeeho`;
+              await httpGet(pushUrl, {}).catch(()=>{});
+              console.log('[Bark查询] 结果已推送');
+            }
+          } catch(e) { console.log('[Bark查询] 异常:', e); }
+          $done({});
+          return true;
+        }
+
+        // ===== 默认：保存配置 =====
         const name = params.get('name') || '';
         const userId = params.get('userId') || '';
-        const token = params.get('token') || '';
         if (userId && token) {
-          // 读取现有账号列表
           let accounts = [];
           try { accounts = JSON.parse($persistentStore.read('zeeho_data') || '[]'); } catch(e) { accounts = []; }
           if (!Array.isArray(accounts)) accounts = [];
-          // 查找是否已存在（按userId匹配）
           const idx = accounts.findIndex(a => String(a.userId) === String(userId));
           const acc = { userName: name || ('账号' + (accounts.length + 1)), userId: userId, token: token };
           if (idx >= 0) {
@@ -65,8 +124,7 @@ const $ = new Env("极核看板增强版");
           $persistentStore.write(JSON.stringify(accounts), 'zeeho_data');
           console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + userId + ')');
         }
-      } catch(e) { console.log('[Bark配置] 解析异常:', e); }
-      // 放行 Bark 请求，让通知正常推送
+      } catch(e) { console.log('[Bark拦截] 解析异常:', e); }
       $done({});
       return true;
     }
