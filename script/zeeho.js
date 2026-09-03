@@ -58,55 +58,9 @@ async function main() {
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
 
-      // 预验证：检查用户ID与Token是否匹配
-      // 接口返回10000即说明Token有效且能访问该用户信息，认为匹配
-      let accountValid = false;
-      try {
-        const vSign = getSign('app', {});
-        const vHeaders = {
-          "Authorization": user.token,
-          "Content-Type": "application/json;charset=UTF-8",
-          "interfaceversion": "2",
-          "user_id": String(user.userId || ""),
-          ...vSign
-        };
-        const vRes = await Request({
-          url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${user.userId}`,
-          type: "get",
-          headers: vHeaders,
-          dataType: "json"
-        });
-        if (vRes?.code == "10000" || vRes?.code === 10000) {
-          accountValid = true;
-        }
-      } catch(e) {}
-
-      // 签到（无论是否验证通过都执行签到）
+      // 签到
       const integral = (await user.signin()) || 0;
       let integralScore = 0;
-
-      if (!accountValid) {
-        // 验证不通过：仅签到，跳过全部社区积分任务
-        $.log(`⚠️ 账号「${user.userName || user.index}」用户ID与Token不匹配，仅执行签到，跳过积分任务`);
-        $.notifyMsg.push(`「${user.userName || user.index}」仅签到(Token不匹配)`);
-        // 写入运行日志
-        try {
-          addSigninLog({
-            time: new Date().toLocaleString("zh-CN", { hour12: false }),
-            userName: user.userName || "未知",
-            userId: user.userId,
-            success: true,
-            totalGain: integral || 0,
-            signinScore: integral || 0,
-            blindBoxScore: 0,
-            interactScore: 0,
-            continueDays: 0,
-            error: "Token与用户ID不匹配，仅执行签到",
-            steps: [`仅签到 +${integral || 0}`, "跳过社区积分任务（Token不匹配）"]
-          });
-        } catch(e) {}
-        continue;
-      }
 
       if (user.ckStatus) {
         await $.wait(user.getRandomTime());
