@@ -172,15 +172,21 @@ async function checkToken(acc, cfg) {
   try {
     const token = cleanToken(acc.token);
     const userId = acc.userId || "";
+    // userId 为空时不检测，直接认为有效（避免误判）
+    if (!userId) {
+      return { valid: true, score: 0, userName: acc.userName };
+    }
     const signH = getSign("app", {}, '', cfg);
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      "user_id": userId,
+      ...signH
+    };
     const res = await httpGet(
       `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`,
-      {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json;charset=UTF-8",
-        "interfaceversion": "2",
-        ...signH
-      }
+      headers
     );
     if (res.code == "10000" && res.data) {
       return { valid: true, score: Number(res.data.score) || 0, userName: res.data.nickName || acc.userName };
@@ -188,9 +194,11 @@ async function checkToken(acc, cfg) {
     if (res.code == "40001" || res.code == 401) {
       return { valid: false, reason: "token已过期" };
     }
-    return { valid: false, reason: res.message || "请求异常" };
+    // 其他错误不判定为失效，避免网络问题误判
+    return { valid: true, reason: res.message || "请求异常" };
   } catch(e) {
-    return { valid: false, reason: String(e) };
+    // 异常不判定为失效
+    return { valid: true, reason: String(e) };
   }
 }
 
