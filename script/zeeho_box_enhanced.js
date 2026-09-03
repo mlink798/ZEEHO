@@ -695,20 +695,29 @@ async function fetchAccountData(acc, cfg) {
 
   // 1. 积分
   try {
-    const signH = getSign("app", {}, '', cfg);
-    const infoUrl = `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`;
-    const infoRes = await httpGet(infoUrl, {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json;charset=UTF-8",
-      "interfaceversion": "2",
-      "user_id": userId,
-      ...signH
-    });
-    if (infoRes.code == "10000" && infoRes.data) {
-      result.score = Number(infoRes.data.score) || 0;
-      if (infoRes.data.nickName) result.userName = infoRes.data.nickName;
+    if (!userId) {
+      result.error = "请在配置页填写用户ID";
+    } else {
+      const signH = getSign("app", {}, '', cfg);
+      const infoUrl = `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`;
+      const infoRes = await httpGet(infoUrl, {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json;charset=UTF-8",
+        "interfaceversion": "2",
+        "user_id": userId,
+        ...signH
+      });
+      if (infoRes.code == "10000" && infoRes.data) {
+        // 尝试多种积分字段名
+        result.score = Number(infoRes.data.score || infoRes.data.integral || infoRes.data.point || infoRes.data.points || infoRes.data.totalScore || infoRes.data.totalIntegral || 0);
+        if (infoRes.data.nickName) result.userName = infoRes.data.nickName;
+      } else if (infoRes.code == "40001" || infoRes.code == 401) {
+        result.error = "Token已过期";
+      } else {
+        result.error = "积分获取失败: " + (infoRes.message || infoRes.code || "未知错误");
+      }
     }
-  } catch(e) { result.error = "积分获取失败"; }
+  } catch(e) { result.error = "积分获取异常: " + String(e); }
 
   // 2. 签到状态（跨月：并行请求当月+上月，合并计算连签，避免1号重置）
   try {
@@ -1209,7 +1218,7 @@ function renderConfig(accounts, cfg) {
       </div>
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
-        <div class="form-item"><label>用户ID（必填，从抓包响应 data.id 获取）</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div>
+        <div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009000440652" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
@@ -1362,7 +1371,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID（必填）</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009000440652" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
