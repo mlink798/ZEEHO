@@ -641,7 +641,7 @@ async function fetchVehicleInfo(acc, cfg) {
 // ========== 获取单账号实时数据 ==========
 async function fetchAccountData(acc, cfg) {
   const token = cleanToken(acc.token);
-  const userId = acc.userId || "";
+  let userId = acc.userId || "";
   const month = new Date().getFullYear() + "-" + (new Date().getMonth() + 1);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -657,6 +657,34 @@ async function fetchAccountData(acc, cfg) {
     error: null,
     vehicle: { hasVehicle: false }
   };
+
+  // userId 为空时，自动调用 setting 接口获取用户信息（兼容旧账号/新添加账号）
+  if (!userId) {
+    try {
+      const signH = getSign("app", {}, '', cfg);
+      const userRes = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json;charset=UTF-8",
+        "interfaceversion": "2",
+        ...signH
+      });
+      if (userRes.code == "10000" && userRes.data) {
+        userId = String(userRes.data.id || userRes.data.userId || "");
+        result.userId = userId;
+        result.score = Number(userRes.data.score) || 0;
+        if (userRes.data.nickName) result.userName = userRes.data.nickName;
+        // 自动保存获取到的 userId 到账号数据
+        try {
+          const accounts = getAccounts();
+          const idx = accounts.findIndex(a => cleanToken(a.token) === token);
+          if (idx >= 0 && !accounts[idx].userId) {
+            accounts[idx].userId = userId;
+            saveAccounts(accounts);
+          }
+        } catch(e) {}
+      }
+    } catch(e) {}
+  }
 
   // 0. 车辆信息（独立获取，不影响其他功能）
   try {
@@ -1147,7 +1175,8 @@ function showVehicleDetail(idx) {
   if (v.batteryTemp) rows.push('<div class="v-detail-row"><span class="v-detail-label">电池温度</span><span class="v-detail-val">'+v.batteryTemp.toFixed(0)+'°C</span></div>');
   rows.push('<div class="v-detail-row"><span class="v-detail-label">剩余续航</span><span class="v-detail-val">'+v.residualRangeKm+'km</span></div>');
   rows.push('<div class="v-detail-row"><span class="v-detail-label">今日骑行</span><span class="v-detail-val">'+(v.todayDistance?v.todayDistance.toFixed(1):0)+'km / '+(v.todayDuration||0)+'min</span></div>');
-  if (v.frontPressure || v.rearPressure) rows.push('<div class="v-detail-row"><span class="v-detail-label">胎压</span><span class="v-detail-val">前'+(v.frontPressure||'-')+' / 后'+(v.rearPressure||'-')+'</span></div>');
+  var hasTire = (v.frontPressure && v.frontPressure !== "未绑定") || (v.rearPressure && v.rearPressure !== "未绑定");
+  if (hasTire) rows.push('<div class="v-detail-row"><span class="v-detail-label">胎压</span><span class="v-detail-val">前'+(v.frontPressure||'-')+' / 后'+(v.rearPressure||'-')+'</span></div>');
   if (v.address) rows.push('<div class="v-detail-row"><span class="v-detail-label">车辆位置</span><span class="v-detail-val" style="font-size:12px">'+v.address+'</span></div>');
   if (v.locationTime) rows.push('<div class="v-detail-row"><span class="v-detail-label">最后定位</span><span class="v-detail-val" style="font-size:11px;color:#94A3B8">'+v.locationTime+'</span></div>');
   if (v.serviceEndDate) rows.push('<div class="v-detail-row"><span class="v-detail-label">服务到期</span><span class="v-detail-val">'+v.serviceEndDate+(v.serviceStatus==="0"?' (剩余'+v.serviceRemainDays+'天)':'')+'</span></div>');
