@@ -4,7 +4,7 @@
 #author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
-图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
+图标: https://cdn.jsdelimlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
 # 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
