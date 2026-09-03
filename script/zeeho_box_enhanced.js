@@ -1,10 +1,10 @@
 /*
 #!name=极核 ZEEHO 签到面板
 #!desc=多账号实时数据面板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
-#author=lucky
+#!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
-图标: https://cdn.jsdelimlink798/ZEEHO@main/ZEEHO.png
+图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
 # 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
