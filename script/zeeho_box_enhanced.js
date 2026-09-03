@@ -547,13 +547,14 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
     const v = vehicles[0];
     result.hasVehicle = true;
     result.vehicleName = v.name;
+    result.vinNo = v.vinNo;
     result.vehicleImageUrl = v.pic;
     const [widgets, tire, ride, charge, service] = await Promise.all([
       fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
@@ -747,7 +748,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
       ${a.vehicle && a.vehicle.hasVehicle ? `
       <div class="vehicle-section">
         <div class="vehicle-label">
-          <span>🚗 ${a.vehicle.vehicleName || "车辆"}</span>
+          <span>🚗 ${a.vehicle.vehicleName || "车辆"} ${a.vehicle.vinNo ? `<span class="vin-no">${a.vehicle.vinNo}</span>` : ""}</span>
           <span class="vehicle-charge ${a.vehicle.chargeState && a.vehicle.chargeState !== "未充电" ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
         </div>
         <div class="vehicle-kpi">
@@ -851,6 +852,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .day-mark{font-size:8px;margin-top:1px}
 .vehicle-section{margin-top:12px;padding-top:12px;border-top:1px solid #F1F5F9}
 .vehicle-label{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#0F172A;margin-bottom:8px}
+.vin-no{font-size:10px;font-weight:500;color:#94A3B8;margin-left:6px;font-family:monospace}
 .vehicle-charge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:#F1F5F9;color:#64748B}
 .vehicle-charge.charging{background:#D1FAE5;color:#065F46}
 .vehicle-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
@@ -1208,12 +1210,7 @@ function getVehicleVin(idx) {
     .then(function(d){
       if (d.ok && d.vehicles && d.vehicles.length > 0) {
         var html = d.vehicles.map(function(v){
-          var info = v.name + ' (' + v.vinNo + ')';
-          if (v.rechargeEndDate) {
-            info += ' · 服务到期: ' + v.rechargeEndDate;
-            if (v.lastUseDate) info += ' (剩余' + v.lastUseDate + '天)';
-          }
-          return info;
+          return v.name + ' (' + v.vinNo + ')';
         }).join('<br>');
         resultEl.innerHTML = html;
         resultEl.style.color = '#0891B2';
@@ -1293,22 +1290,13 @@ function sendResp(status, headers, body) {
     return;
   }
 
-  // API: 获取账号车辆列表（车架号+服务到期时间）
+  // API: 获取账号车辆列表（车架号）
   if (method === "POST" && path === "/api/get-vehicle") {
     const body = parseBody($request);
     const cfg = getConfig();
     const acc = { token: body.token || "", userId: body.userId || "", userName: "" };
     try {
       const vehicles = await fetchVehicleList(acc, cfg);
-      // 对每辆车获取服务到期时间
-      for (const v of vehicles) {
-        const detail = await fetchServiceRechargeDetail(acc, cfg, v.vinNo);
-        if (detail) {
-          v.rechargeEndDate = detail.rechargeEndDate;
-          v.lastUseDate = detail.lastUseDate;
-          if (detail.vehicleName) v.name = detail.vehicleName;
-        }
-      }
       sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, vehicles: vehicles }));
     } catch(e) {
       sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, error: String(e) }));
