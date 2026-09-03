@@ -547,7 +547,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "" };
+  const result = { hasVehicle: false, vehicleName: "", batteryPercent: 0, residualRangeKm: 0, address: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -555,11 +555,12 @@ async function fetchVehicleInfo(acc, cfg) {
     result.hasVehicle = true;
     result.vehicleName = v.name;
     result.vehicleImageUrl = v.pic;
-    const [widgets, tire, ride, charge] = await Promise.all([
+    const [widgets, tire, ride, charge, service] = await Promise.all([
       fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
       fetchTirePressure(acc, cfg, v.vinNo).catch(() => null),
       fetchRideInfo(acc, cfg, v.vinNo).catch(() => null),
-      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => "未充电")
+      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => "未充电"),
+      fetchServiceRechargeDetail(acc, cfg, v.vinNo).catch(() => null)
     ]);
     if (widgets) {
       result.batteryPercent = widgets.batteryPercent;
@@ -581,6 +582,12 @@ async function fetchVehicleInfo(acc, cfg) {
       result.lastRideMileage = ride.lastRideMileage;
     }
     result.chargeState = charge;
+    if (service) {
+      result.serviceEndDate = service.rechargeEndDate;
+      result.serviceRemainDays = service.lastUseDate;
+      result.serviceStatus = service.serviceRechargeStatus;
+      if (service.vehicleName) result.vehicleName = service.vehicleName;
+    }
   } catch(e) {}
   return result;
 }
@@ -768,6 +775,12 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <div class="tire-item"><span class="tire-icon">🛞</span>前 ${a.vehicle.frontPressure || "-"} ${a.vehicle.frontTemp ? `<span class="tire-temp">${a.vehicle.frontTemp}</span>` : ""}</div>
           <div class="tire-item"><span class="tire-icon">🛞</span>后 ${a.vehicle.rearPressure || "-"} ${a.vehicle.rearTemp ? `<span class="tire-temp">${a.vehicle.rearTemp}</span>` : ""}</div>
         </div>` : ""}
+        ${a.vehicle.serviceEndDate ? `
+        <div class="service-row">
+          <span class="service-icon">📅</span>
+          <span class="service-text">服务到期: ${a.vehicle.serviceEndDate}</span>
+          ${a.vehicle.serviceStatus === "0" ? `<span class="service-remain">剩余${a.vehicle.serviceRemainDays}天</span>` : `<span class="service-expired">已过期</span>`}
+        </div>` : ""}
         ${a.vehicle.address ? `<div class="vehicle-addr">📍 ${a.vehicle.address}</div>` : ""}
       </div>` : ""}
     </div>`;
@@ -847,6 +860,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tire-icon{font-size:12px}
 .tire-temp{color:#0EA5E9;font-size:10px}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
+.service-icon{font-size:12px}
+.service-text{font-weight:600}
+.service-remain{color:#0891B2;background:#E0F7FB;padding:1px 6px;border-radius:6px;font-size:10px}
+.service-expired{color:#DC2626;background:#FEE2E2;padding:1px 6px;border-radius:6px;font-size:10px}
 .no-vehicle-tip{margin-top:10px;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:11px;color:#B45309;text-align:center}
 .footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;margin-top:10px}
 .footer a{color:#0891B2;text-decoration:none}
