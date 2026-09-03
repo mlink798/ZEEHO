@@ -7,7 +7,7 @@
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
 
 [Script]
-# 面板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
+# 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
 http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
@@ -538,18 +538,37 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
   try {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
-    const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`, {
-      "Authorization": `Bearer ${token}`, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2", "user_id": acc.userId || "", ...signH
-    });
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      "appid": cfg.app.appId,
+      "user_id": acc.userId || "",
+      ...signH
+    };
+    const res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/batteryInfo/${encodeURIComponent(vinNo)}`, headers);
     if (res.code == "10000" && res.data) {
-      return String(res.data.chargeStateStr || "未充电");
+      const d = res.data;
+      // 尝试提取电压（多种可能字段名）
+      const voltage = Number(d.voltage || d.batteryVoltage || d.bmsVoltage || d.totalVoltage || d.batteryTotalVoltage || d.vol || d.batVoltage || d.batteryVol || 0);
+      // 尝试提取电流
+      const current = Number(d.current || d.batteryCurrent || d.bmsCurrent || d.cur || d.batteryCur || 0);
+      // 尝试提取电池温度
+      const batteryTemp = Number(d.batteryTemp || d.batTemp || d.temp || d.temperature || d.bmsTemp || d.batteryTemperature || 0);
+      return {
+        chargeState: String(d.chargeStateStr || d.chargeState || "未充电"),
+        voltage: isFinite(voltage) && voltage > 0 ? voltage : 0,
+        current: isFinite(current) ? current : 0,
+        batteryTemp: isFinite(batteryTemp) ? batteryTemp : 0,
+        soc: Number(d.soc || d.batteryLevel || d.bmssoc || 0)
+      };
     }
-    return "未充电";
-  } catch(e) { return "未充电"; }
+    return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 };
+  } catch(e) { return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 }; }
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -558,11 +577,11 @@ async function fetchVehicleInfo(acc, cfg) {
     result.vehicleName = v.name;
     result.vinNo = v.vinNo;
     result.vehicleImageUrl = v.pic;
-    const [widgets, tire, ride, charge, service] = await Promise.all([
+    const [widgets, tire, ride, battery, service] = await Promise.all([
       fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
       fetchTirePressure(acc, cfg, v.vinNo).catch(() => null),
       fetchRideInfo(acc, cfg, v.vinNo).catch(() => null),
-      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => "未充电"),
+      fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => ({ chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 })),
       fetchServiceRechargeDetail(acc, cfg, v.vinNo).catch(() => null)
     ]);
     if (widgets) {
@@ -586,7 +605,10 @@ async function fetchVehicleInfo(acc, cfg) {
       result.todayMaxSpeed = ride.todayMaxSpeed;
       result.lastRideMileage = ride.lastRideMileage;
     }
-    result.chargeState = charge;
+    result.chargeState = battery.chargeState || "未充电";
+    if (battery.voltage) result.voltage = battery.voltage;
+    if (battery.current) result.current = battery.current;
+    if (battery.batteryTemp) result.batteryTemp = battery.batteryTemp;
     if (service) {
       result.serviceEndDate = service.rechargeEndDate;
       result.serviceRemainDays = service.lastUseDate;
@@ -757,11 +779,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="vehicle-kpi">
           <div class="v-kpi">
             <div class="v-kpi-val" style="color:${a.vehicle.batteryPercent <= 20 ? "#EF4444" : a.vehicle.batteryPercent <= 50 ? "#F59E0B" : "#0891B2"}">${a.vehicle.batteryPercent}%</div>
-            <div class="v-kpi-lbl">电量</div>
-          </div>
-          <div class="v-kpi">
-            <div class="v-kpi-val">${a.vehicle.voltage ? a.vehicle.voltage.toFixed(1) + "V" : "-"}</div>
-            <div class="v-kpi-lbl">电压</div>
+            <div class="v-kpi-lbl">电量SOC</div>
           </div>
           <div class="v-kpi">
             <div class="v-kpi-val">${a.vehicle.residualRangeKm}</div>
@@ -783,6 +801,12 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="tire-row">
           <div class="tire-item"><span class="tire-icon">🛞</span>前 ${a.vehicle.frontPressure || "-"} ${a.vehicle.frontTemp ? `<span class="tire-temp">${a.vehicle.frontTemp}</span>` : ""}</div>
           <div class="tire-item"><span class="tire-icon">🛞</span>后 ${a.vehicle.rearPressure || "-"} ${a.vehicle.rearTemp ? `<span class="tire-temp">${a.vehicle.rearTemp}</span>` : ""}</div>
+        </div>` : ""}
+        ${(a.vehicle.voltage || a.vehicle.current || a.vehicle.batteryTemp) ? `
+        <div class="battery-row">
+          <div class="battery-item"><span class="battery-icon">⚡</span>电压 ${a.vehicle.voltage ? a.vehicle.voltage.toFixed(1) + "V" : "-"}</div>
+          <div class="battery-item"><span class="battery-icon">🔌</span>电流 ${a.vehicle.current ? a.vehicle.current.toFixed(1) + "A" : "-"}</div>
+          <div class="battery-item"><span class="battery-icon">🌡️</span>电池温度 ${a.vehicle.batteryTemp ? a.vehicle.batteryTemp.toFixed(0) + "°C" : "-"}</div>
         </div>` : ""}
         ${a.vehicle.serviceEndDate ? `
         <div class="service-row">
@@ -872,6 +896,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tire-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px}
 .tire-icon{font-size:12px}
 .tire-temp{color:#0EA5E9;font-size:10px}
+.battery-row{display:flex;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+.battery-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px;background:#F8FAFC;padding:4px 8px;border-radius:6px}
+.battery-icon{font-size:12px}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
 .loc-time{color:#CBD5E1;font-size:9px}
 .service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
