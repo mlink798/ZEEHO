@@ -48,11 +48,14 @@ const $ = new Env("极核看板增强版");
         const action = params.get('action') || 'save';
         const token = params.get('token') || '';
         const pathParts = u.pathname.split('/').filter(Boolean);
-        const barkKey = pathParts[0] || '';
+        const sourceKey = pathParts[0] || '';
+        // 优先用 callbackKey（客户端绑定的API，接收查询结果），没有才用请求来源Key
+        const callbackKey = params.get('callbackKey') || '';
+        const barkKey = callbackKey || sourceKey;
 
         if (action === 'query' && token) {
           // ===== 查询：查极核API，结果通过 Bark 推送 =====
-          console.log('[Bark查询] 收到查询请求');
+          console.log('[Bark查询] 收到查询请求, callbackKey=' + (callbackKey||'无') + ', sourceKey=' + sourceKey);
           try {
             const cfg = getConfig();
             const cleanTok = cleanToken(token);
@@ -95,10 +98,29 @@ const $ = new Env("极核看板增强版");
                 vehicleText += `\n🚗 ${v.vehicleName||'车辆'}：${soc}% / ${range}km${charge&&charge!=='未充电'?' · '+charge:''}`;
               }
             }
-            const title = `⚡ ${nickName} 签到查询`;
-            const body = `用户ID：${uid||'-'}\n连签：${cont}天 · 今日：${signedToday?'已签 +'+todayScore:'未签'}\n总积分：${totalScore}${vehicleText}`;
+            const title = `⚡ 极核查询结果(JSON)`;
+            const resultObj = {
+              nickName: nickName,
+              userId: uid || '-',
+              continueDays: cont,
+              signedToday: signedToday,
+              todayScore: todayScore,
+              totalScore: totalScore,
+              vehicles: []
+            };
+            // 车辆信息已在 vehicleText 里，这里也收集结构化数据
+            if (vehicleRes && String(vehicleRes.code)==='10000' && Array.isArray(vehicleRes.data)) {
+              for (const v of vehicleRes.data) {
+                resultObj.vehicles.push({
+                  name: v.vehicleName || '车辆',
+                  vin: v.vinNo || '',
+                  licensePlate: v.licensePlate || ''
+                });
+              }
+            }
+            const body = JSON.stringify(resultObj);
             if (barkKey) {
-              const pushUrl = `https://api.day.app/${barkKey}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?group=zeeho`;
+              const pushUrl = `https://api.day.app/${barkKey}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?group=zeeho&autoCopy=1`;
               await httpGet(pushUrl, {}).catch(()=>{});
               console.log('[Bark查询] 结果已推送');
             }
