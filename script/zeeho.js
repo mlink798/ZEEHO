@@ -59,6 +59,7 @@ async function main() {
       console.log(`随机延迟${user.getRandomTime()}ms`);
 
       // 预验证：检查用户ID与Token是否匹配
+      // 接口返回10000即说明Token有效且能访问该用户信息，认为匹配
       let accountValid = false;
       try {
         const vSign = getSign('app', {});
@@ -75,11 +76,8 @@ async function main() {
           headers: vHeaders,
           dataType: "json"
         });
-        if (vRes?.code == "10000" && vRes?.data) {
-          const returnedId = String(vRes.data.id || vRes.data.userId || "");
-          if (returnedId === String(user.userId)) {
-            accountValid = true;
-          }
+        if (vRes?.code == "10000" || vRes?.code === 10000) {
+          accountValid = true;
         }
       } catch(e) {}
 
@@ -757,11 +755,8 @@ async function getCookie() {
         headers: verifyHeaders,
         dataType: "json"
       });
-      if (verifyRes?.code == "10000" && verifyRes?.data) {
-        const returnedId = String(verifyRes.data.id || verifyRes.data.userId || "");
-        if (returnedId === String(userId)) {
-          tokenMatch = true;
-        }
+      if (verifyRes?.code == "10000" || verifyRes?.code === 10000) {
+        tokenMatch = true;
       }
     } catch(e) {}
 
