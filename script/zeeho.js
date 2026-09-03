@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到并推送 iOS 通知。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-图标: 
+图标: https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ZEEHO.png
 
 [Script]
 # 获取 Cookie
