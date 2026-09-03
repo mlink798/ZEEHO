@@ -86,7 +86,7 @@
 <div class="container">
   <div class="header">
     <h1>⚡ 极核 ZEEHO 配置客户端</h1>
-    <p>验证 · 上传 · 教程 <span style="font-size:10px;color:#888;">v2.0.0</span></p>
+    <p>验证 · 上传 · 教程 <span style="font-size:10px;color:#10b981;font-weight:600;">v2.1.3</span></p>
   </div>
 
   <div class="tabs">
@@ -102,10 +102,6 @@
       <div class="form-item">
         <label>账号名称（昵称/备注）</label>
         <input type="text" id="up_name" placeholder="例如：lucky798" oninput="onFormInput()">
-      </div>
-      <div class="form-item">
-        <label>用户 ID（验证后自动获取，无需手动填写）</label>
-        <input type="text" id="up_userId" placeholder="点击「本地验证」后自动获取" readonly style="background:#f5f5f5;color:#666;">
       </div>
       <div class="form-item">
         <label>Authorization（Token，不含 Bearer）</label>
@@ -126,11 +122,11 @@
       <h2>使用流程</h2>
       <div class="tutorial">
         <div class="step">1. 填写账号名称（可选）、Authorization（Token）、Bark API（可选，接收签到结果）</div>
-        <div class="step">2. 点击「本地验证」：自动调用极核 API 获取用户ID和昵称（直连失败自动走代理，<b>不需要 Loon</b>）</div>
+        <div class="step">2. 点击「本地验证」：验证Token有效性并获取昵称（直连失败自动走代理，<b>不需要 Loon</b>）</div>
         <div class="step">⚠️ 验证通过后如修改任何内容，必须重新验证才能上传</div>
-        <div class="step">3. 验证通过后用户ID自动填充，「Bark 上传」按钮解锁</div>
+        <div class="step">3. 验证通过后「Bark 上传」按钮解锁</div>
         <div class="step">4. 点击「Bark 上传」推送到手机</div>
-        <div class="step">5. 手机端 Loon 拦截 Bark 请求，保存配置到面板并运行签到</div>
+        <div class="step">5. 手机端 Loon 拦截 Bark 请求，<b>自动获取用户ID</b>并保存配置到面板</div>
         <div class="warn">⚠️ 验证和获取用户ID在客户端本地完成，不依赖 Loon；只有最后一步保存配置需要手机开着 Loon</div>
       </div>
     </div>
@@ -203,10 +199,9 @@ const APP_APP_SECRET = "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
 // 获取当前输入内容的哈希（用于检测修改）
 function getCurrentContentHash(){
   const name=document.getElementById('up_name').value;
-  const userId=document.getElementById('up_userId').value;
   const token=document.getElementById('up_token').value;
   const barkKey=document.getElementById('up_barkKey').value;
-  return name+'|'+userId+'|'+token+'|'+barkKey;
+  return name+'|'+token+'|'+barkKey;
 }
 
 // 输入框内容修改时，如果已验证过，则禁用上传按钮
@@ -327,7 +322,6 @@ let _validatedHash=null; // 记录验证通过时的内容哈希
 function getFormHash(){
   return [
     document.getElementById('up_name').value,
-    document.getElementById('up_userId').value,
     document.getElementById('up_token').value,
     document.getElementById('up_barkKey').value
   ].join('|');
@@ -372,7 +366,6 @@ async function zeehoFetch(type,base,path,queryStr,token,method,extraHeaders){
 // ====== ① 本地验证（不依赖Loon） ======
 async function validateToken(){
   const name=document.getElementById('up_name').value.trim();
-  const userId=document.getElementById('up_userId').value.trim();
   const token=cleanToken(document.getElementById('up_token').value);
   if(!token){showResult('up_result','error','❌ 请输入 Authorization');return;}
 
@@ -389,19 +382,11 @@ async function validateToken(){
     if(res&&String(res.code)==='10000'&&res.data){
       const returnedId=String(res.data.id||'');
       const nickName=res.data.nickName||'';
-      if(returnedId&&returnedId!==String(userId)){
-        showResult('up_result','error',`❌ 用户ID不匹配<br>填写ID：${userId}<br>Token实际ID：${returnedId}<br>昵称：${nickName}`);
-      }else{
-        if(!name&&nickName)document.getElementById('up_name').value=nickName;
-        // 自动填充用户ID
-        if(returnedId)document.getElementById('up_userId').value=returnedId;
-        // 记录验证通过时的内容哈希
-        
-        showResult('up_result','success',`✅ 验证通过，已自动获取用户信息<br>昵称：${nickName}<br>用户ID：${returnedId||userId}<br>「Bark 上传」已解锁<br><br>💡 如需修改内容，请重新验证`);
-        document.getElementById('uploadBtn').disabled=false;
-      // 记录验证通过时的内容哈希
+      // 验证通过后自动填充昵称（用户ID由服务端自动获取）
+      if(!name&&nickName)document.getElementById('up_name').value=nickName;
       window._validatedContent=getCurrentContentHash();
-      }
+      showResult('up_result','success',`✅ Token验证通过<br>昵称：${nickName}<br>用户ID：${returnedId}（服务端自动获取）<br>「Bark 上传」已解锁<br><br>💡 如需修改内容，请重新验证`);
+      document.getElementById('uploadBtn').disabled=false;
     }else{
       // 联网返回业务错误：Token确实无效
       showResult('up_result','error','❌ Token无效或已过期：'+(res.message||res.msg||'未知错误'));
@@ -416,17 +401,21 @@ async function validateToken(){
 // ====== ② Bark 上传 ======
 async function uploadConfig(){
   const name=document.getElementById('up_name').value.trim();
-  const userId=document.getElementById('up_userId').value.trim();
   const token=cleanToken(document.getElementById('up_token').value);
-  if(!name||!userId||!token){showResult('up_result','error','❌ 请填写完整信息');return;}
+  if(!name||!token){showResult('up_result','error','❌ 请填写账号名称和Token');return;}
+  // 从Bark API输入框自动提取Key（支持完整URL或纯Key）
+  const barkInput=document.getElementById('up_barkKey').value.trim();
+  let barkKey=barkInput;
+  const bm=barkInput.match(/api\.day\.app\/([a-zA-Z0-9]+)/);
+  if(bm) barkKey=bm[1];
   const btn=document.getElementById('uploadBtn');
   btn.disabled=true;btn.textContent='上传中...';
   try{
-    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}${barkKey?'&barkKey='+encodeURIComponent(barkKey):''}`;
+    const barkUrl=`https://api.day.app/${DEFAULT_BARK_KEY}/极核配置上传?name=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}${barkKey?'&barkKey='+encodeURIComponent(barkKey):''}`;
     const res=await fetch(barkUrl);
     const data=await res.json();
     if(data.code===200){
-      showResult('up_result','success',`✅ 已通过 Bark 上传<br>账号：${name}<br>用户ID：${userId}<br>Loon 自动保存配置并运行签到`);
+      showResult('up_result','success',`✅ 已通过 Bark 上传<br>账号：${name}<br>Loon 自动获取用户ID并保存配置`);
     }else{
       showResult('up_result','error','❌ Bark 推送失败：'+JSON.stringify(data));
     }
@@ -531,7 +520,6 @@ function fillAccount(index){
     const acc=accounts[index];
     if(acc){
       document.getElementById('up_name').value=acc.userName||'';
-      document.getElementById('up_userId').value=acc.userId||'';
       document.getElementById('up_token').value=acc.token||'';
       document.getElementById('up_barkKey').value=acc.barkKey||'';
       _validatedHash=null; // 填入后需要重新验证
