@@ -1218,7 +1218,7 @@ function renderConfig(accounts, cfg) {
       </div>
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
-        <div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId(${idx})" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button></label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div>
+        <div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId(${idx})" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button><button type="button" onclick="verifyAccount(${idx})" style="margin-left:4px;padding:2px 8px;font-size:10px;background:#F59E0B;color:#fff;border:none;border-radius:4px;cursor:pointer">验证</button></label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
@@ -1371,7 +1371,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId('+idx+')" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button></label><input type="text" id="acc_uid_'+idx+'" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label style="color:#DC2626;font-weight:600">用户ID（必填）<button type="button" onclick="fetchUserId('+idx+')" style="margin-left:8px;padding:2px 8px;font-size:10px;background:#0891B2;color:#fff;border:none;border-radius:4px;cursor:pointer">自动获取</button><button type="button" onclick="verifyAccount('+idx+')" style="margin-left:4px;padding:2px 8px;font-size:10px;background:#F59E0B;color:#fff;border:none;border-radius:4px;cursor:pointer">验证</button></label><input type="text" id="acc_uid_'+idx+'" placeholder="输入Token后点击自动获取" style="font-family:monospace;font-size:12px;border-color:#FCA5A5"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1405,21 +1405,84 @@ function fetchUserId(idx) {
     })
     .catch(function(){ showToast('获取失败', 'err'); });
 }
-function saveAccounts() {
+function verifyAccount(idx) {
+  var uidInput = document.getElementById('acc_uid_'+idx);
+  var tokenInput = document.getElementById('acc_token_'+idx);
+  if (!uidInput || !uidInput.value.trim()) {
+    showToast('请先填写用户ID', 'err');
+    return;
+  }
+  if (!tokenInput || !tokenInput.value.trim()) {
+    showToast('请先填写Token', 'err');
+    return;
+  }
+  showToast('正在验证...');
+  fetch('/api/verify-account', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({userId: uidInput.value.trim(), token: tokenInput.value.trim()}) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.valid) {
+        showToast('✓ ' + d.message);
+        uidInput.style.borderColor = '#10B981';
+      } else {
+        showToast('✗ ' + d.message, 'err');
+        uidInput.style.borderColor = '#EF4444';
+        // 如果返回了正确的用户ID，提示用户
+        if (d.returnedId && d.returnedId !== uidInput.value.trim()) {
+          if (confirm('Token属于用户ID: ' + d.returnedId + '\n是否自动替换为正确的用户ID？')) {
+            uidInput.value = d.returnedId;
+            uidInput.style.borderColor = '#10B981';
+            showToast('已自动替换为正确的用户ID');
+          }
+        }
+      }
+    })
+    .catch(function(){ showToast('验证失败', 'err'); });
+}
+async function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
   var list = [];
-  rows.forEach(function(row) {
+  var errors = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
     var idx = row.getAttribute('data-idx');
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
     if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+      var userId = uid ? uid.value.trim() : '';
+      var tokenVal = token.value.trim();
+      // 验证用户ID与Token是否匹配
+      if (userId) {
+        try {
+          var resp = await fetch('/api/verify-account', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({userId: userId, token: tokenVal}) });
+          var result = await resp.json();
+          if (!result.valid) {
+            errors.push('账号' + (i+1) + ': ' + result.message);
+            uid.style.borderColor = '#EF4444';
+            continue; // 不保存这个账号
+          } else {
+            uid.style.borderColor = '#10B981';
+          }
+        } catch(e) {
+          // 验证接口异常时，仍然保存（避免网络问题导致无法保存）
+        }
+      }
+      list.push({ userName: name ? name.value : '', userId: userId, token: tokenVal, userAgent: '' });
     }
-  });
+  }
+  if (errors.length > 0) {
+    if (!confirm('以下账号验证未通过，将不保存：\n\n' + errors.join('\n') + '\n\n是否继续保存其他账号？')) {
+      showToast('已取消保存', 'err');
+      return;
+    }
+  }
+  if (list.length === 0) {
+    showToast('没有可保存的账号', 'err');
+    return;
+  }
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('账号已保存'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
+    .then(function(d){ if(d.ok){ showToast('已保存 ' + list.length + ' 个账号' + (errors.length > 0 ? '（' + errors.length + ' 个验证失败未保存）' : '')); setTimeout(function(){ location.reload(); }, 1000); } else { showToast('保存失败', 'err'); } })
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 </script>
@@ -1456,6 +1519,52 @@ function sendResp(status, headers, body) {
     const body = parseBody($request);
     const ok = saveConfig(body);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok }));
+    return;
+  }
+
+  // API: 验证用户ID与Token是否匹配
+  if (method === "POST" && path === "/api/verify-account") {
+    const body = parseBody($request);
+    const userId = String(body.userId || "");
+    const token = cleanToken(body.token || "");
+    const cfg = getConfig();
+    let valid = false;
+    let message = "";
+    let returnedId = "";
+    if (!userId || !token) {
+      message = "用户ID和Token不能为空";
+    } else {
+      try {
+        const signH = getSign("app", {}, '', cfg);
+        const res = await httpGet(`https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${userId}`, {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json;charset=UTF-8",
+          "interfaceversion": "2",
+          "user_id": userId,
+          ...signH
+        });
+        if (res.code == "10000" && res.data) {
+          returnedId = String(res.data.id || res.data.userId || "");
+          if (returnedId === userId) {
+            valid = true;
+            message = "验证通过，Token与用户ID匹配";
+          } else {
+            valid = false;
+            message = `Token不匹配！该Token属于用户ID: ${returnedId || "未知"}，不是 ${userId}`;
+          }
+        } else if (res.code == "40001" || res.code == 401) {
+          valid = false;
+          message = "Token已过期，请重新获取";
+        } else {
+          valid = false;
+          message = "验证失败: " + (res.message || res.code || "未知错误");
+        }
+      } catch(e) {
+        valid = false;
+        message = "验证异常: " + String(e);
+      }
+    }
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ valid: valid, message: message, returnedId: returnedId }));
     return;
   }
 
