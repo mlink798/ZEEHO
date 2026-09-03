@@ -1536,7 +1536,47 @@ function sendResp(status, headers, body) {
           }
         } catch(e) {}
       }
-      if (!userId) error = "自动获取失败，请手动填写用户ID（抓包/setting/{userId}响应data.id）";
+      // 方式5：社区接口（粉丝列表/关注列表/用户信息），这些接口响应中通常包含 userId
+      if (!userId) {
+        const socialUrls = [
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/fans/list?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/follower/list?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/user/fans?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/my/fans?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/fans?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/fans/myFans?page=1&pageSize=1",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/user/info",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/my/info",
+          "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/userInfo"
+        ];
+        for (const url of socialUrls) {
+          if (userId) break;
+          try {
+            const signH = getSign("app", {}, '', cfg);
+            const res = await httpGet(url, { ...baseHeaders, ...signH });
+            if (res && res.data) {
+              userId = findUserId(res.data);
+              if (!userId && res) userId = findUserId(res);
+              // 尝试从昵称中获取 userName
+              if (!userName && res.data) {
+                const findName = (obj, depth = 0) => {
+                  if (!obj || depth > 4) return "";
+                  for (const key of Object.keys(obj)) {
+                    if (/nick.?name|user.?name|name/i.test(key) && obj[key] && typeof obj[key] === "string") return obj[key];
+                    if (obj[key] && typeof obj[key] === "object") {
+                      const n = findName(obj[key], depth + 1);
+                      if (n) return n;
+                    }
+                  }
+                  return "";
+                };
+                userName = findName(res.data);
+              }
+            }
+          } catch(e) {}
+        }
+      }
+      if (!userId) error = "自动获取失败，请手动填写用户ID（或打开极核App-我的页面自动捕获）";
     }
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: !!userId, userId: userId, userName: userName, error: error }));
     return;
