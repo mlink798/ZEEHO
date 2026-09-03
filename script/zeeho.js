@@ -724,10 +724,11 @@ async function Request(o) {
         headers['signature'] = sign;
       }
     }
-    // Env类$.http只有get/post方法，PUT/DELETE需转成POST
-    const httpMethod = ['get', 'post'].includes(method) ? method : 'post';
-    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method: httpMethod, headers, params: undefined, ...(method !== 'get' ? { body: body } : {}), timeout: timeout }
-    const httpPromise = $.http[httpMethod.toLowerCase()](request)
+    // Env类$.http只有get/post入口，但post方法会读取request.method转发给$httpClient
+    // 所以始终调用$.http.post，在request.method中保留原始方法(put/delete)
+    const httpEntry = method === 'get' ? 'get' : 'post';
+    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method: method, headers, params: undefined, ...(method !== 'get' ? { body: body } : {}), timeout: timeout }
+    const httpPromise = $.http[httpEntry](request)
       .then(response => resultType == 'data' ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
       .catch(err => $.log(`❌请求发起失败！原因为：${err}`));
     // 使用Promise.race来强行加入超时处理
