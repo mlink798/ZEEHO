@@ -665,11 +665,13 @@ function getSign(type, params = {}, body = '') {
       if (c && c.appSecret) appConfig.appSecret = c.appSecret;
     }
   } catch(e) {}
-  const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
+  const query = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null).sort().map(key => `${key}=${params[key]}`).join('&')
   const timestamp = new Date().getTime()
-  const nonce = type === "h5" ? getUuid() : timestamp + getRandomChars()
+  const nonce = getUuid()
   const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
   const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
+  // App端签名: bodyStr + param + secret（POST有body用body，GET无body时query已在URL中）
+  // H5端签名: query + param + secret
   const signature = type === "h5" ? `${query}${param}${appConfig.appSecret}` : `${bodyStr}${param}${appConfig.appSecret}`
   const sign = md5(sha1(signature), 32).toString()
   return {
@@ -702,6 +704,7 @@ async function Request(o) {
     // post请求处理body
     const body = b && dataType == 'form' ? $.queryStr(b) : $.toStr(b);
     if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
+      // App端签名: body || signQuery（POST有body用body，GET用query，参考Dantezcx脚本）
       const signPayload = body || signQuery;
       if (signPayload) {
         const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
