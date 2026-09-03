@@ -724,8 +724,8 @@ async function Request(o) {
         headers['signature'] = sign;
       }
     }
-    // 保持原始method（GET/POST/PUT/DELETE），不转换
-    const httpMethod = method;
+    // Env类$.http只有get/post方法，PUT/DELETE需转成POST
+    const httpMethod = ['get', 'post'].includes(method) ? method : 'post';
     const request = { ...o, ...(o?.opts ? o.opts : {}), url, method: httpMethod, headers, params: undefined, ...(method !== 'get' ? { body: body } : {}), timeout: timeout }
     const httpPromise = $.http[httpMethod.toLowerCase()](request)
       .then(response => resultType == 'data' ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
