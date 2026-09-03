@@ -629,21 +629,9 @@ async function fetchVehicleInfo(acc, cfg) {
       result.rangeEstimated = true;
     }
     if (service) {
-      result.serviceEndDate = service.rechargeEndDate;
-      result.serviceStatus = service.serviceRechargeStatus;
-      // 用智能服务到期日期计算剩余天数，不用lastUseDate
-      if (service.rechargeEndDate) {
-        try {
-          const endDate = new Date(service.rechargeEndDate.replace(/\./g, "-"));
-          const now = new Date();
-          const diffMs = endDate.getTime() - now.getTime();
-          result.serviceRemainDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-        } catch(e) {
-          result.serviceRemainDays = service.lastUseDate || 0;
-        }
-      } else {
-        result.serviceRemainDays = service.lastUseDate || 0;
-      }
+      result.serviceEndDate = service.rechargeEndDate || "";
+      result.serviceStatus = service.serviceRechargeStatus || "";
+      result.serviceRemainDays = service.lastUseDate || 0;
       if (service.vehicleName) result.vehicleName = service.vehicleName;
     }
   } catch(e) {}
@@ -722,7 +710,7 @@ async function fetchAccountData(acc, cfg) {
       if (infoRes.code == "10000" && infoRes.data) {
         // 尝试多种积分字段名
         result.score = Number(infoRes.data.score || infoRes.data.integral || infoRes.data.point || infoRes.data.points || infoRes.data.totalScore || infoRes.data.totalIntegral || 0);
-        if (infoRes.data.nickName) result.userName = infoRes.data.nickName;
+        // 昵称始终用配置中保存的，不用API返回的nickName覆盖
       } else if (infoRes.code == "40001" || infoRes.code == 401) {
         result.error = "Token已过期";
       } else {
@@ -904,7 +892,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         ${a.vehicle.serviceEndDate ? `
         <div class="service-row">
           <span class="service-icon">📅</span>
-          ${a.vehicle.serviceStatus === "0" ? `<span class="service-remain">服务剩余${a.vehicle.serviceRemainDays}天</span>` : `<span class="service-expired">服务已过期</span>`}
+          <span class="service-text">服务到期 ${a.vehicle.serviceEndDate}</span>
         </div>` : ""}
         ${a.vehicle.address ? `
         <div class="vehicle-addr">
@@ -1203,7 +1191,7 @@ function showVehicleDetail(idx) {
   if (hasTire) rows.push('<div class="v-detail-row"><span class="v-detail-label">胎压</span><span class="v-detail-val">前'+(v.frontPressure||'-')+' / 后'+(v.rearPressure||'-')+'</span></div>');
   if (v.address) rows.push('<div class="v-detail-row"><span class="v-detail-label">车辆位置</span><span class="v-detail-val" style="font-size:12px">'+v.address+'</span></div>');
   if (v.locationTime) rows.push('<div class="v-detail-row"><span class="v-detail-label">最后定位</span><span class="v-detail-val" style="font-size:11px;color:#94A3B8">'+v.locationTime+'</span></div>');
-  if (v.serviceEndDate) rows.push('<div class="v-detail-row"><span class="v-detail-label">服务到期</span><span class="v-detail-val">'+v.serviceEndDate+(v.serviceStatus==="0"?' (剩余'+v.serviceRemainDays+'天)':'')+'</span></div>');
+  if (v.serviceEndDate) rows.push('<div class="v-detail-row"><span class="v-detail-label">服务到期</span><span class="v-detail-val">'+v.serviceEndDate+'</span></div>');
   content.innerHTML = '<div class="v-detail-container">'+rows.join('')+'</div><style>.v-detail-container{display:flex;flex-direction:column;gap:0}.v-detail-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F1F5F9}.v-detail-row:last-child{border-bottom:none}.v-detail-label{font-size:12px;color:#64748B;font-weight:500}.v-detail-val{font-size:13px;color:#0F172A;font-weight:600}</style>';
   modal.style.display = 'flex';
 }
