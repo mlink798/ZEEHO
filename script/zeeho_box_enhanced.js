@@ -555,16 +555,18 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
       const current = Number(d.current || d.batteryCurrent || d.bmsCurrent || d.cur || d.batteryCur || 0);
       // 尝试提取电池温度
       const batteryTemp = Number(d.batteryTemp || d.batTemp || d.temp || d.temperature || d.bmsTemp || d.batteryTemperature || 0);
+      const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || d.residualRange || 0);
       return {
         chargeState: String(d.chargeStateStr || d.chargeState || "未充电"),
         voltage: isFinite(voltage) && voltage > 0 ? voltage : 0,
         current: isFinite(current) ? current : 0,
         batteryTemp: isFinite(batteryTemp) ? batteryTemp : 0,
-        soc: Number(d.soc || d.batteryLevel || d.bmssoc || 0)
+        soc: Number(d.soc || d.batteryLevel || d.bmssoc || 0),
+        residualRangeKm: isFinite(range) ? range : 0
       };
     }
-    return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 };
-  } catch(e) { return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 }; }
+    return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0, residualRangeKm: 0 };
+  } catch(e) { return { chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0, residualRangeKm: 0 }; }
 }
 
 async function fetchVehicleInfo(acc, cfg) {
@@ -609,6 +611,10 @@ async function fetchVehicleInfo(acc, cfg) {
     if (battery.voltage) result.voltage = battery.voltage;
     if (battery.current) result.current = battery.current;
     if (battery.batteryTemp) result.batteryTemp = battery.batteryTemp;
+    // 续航兜底：widgets 充电时可能返回0，用 batteryInfo 的续航
+    if ((!result.residualRangeKm || result.residualRangeKm === 0) && battery.residualRangeKm) {
+      result.residualRangeKm = battery.residualRangeKm;
+    }
     if (service) {
       result.serviceEndDate = service.rechargeEndDate;
       result.serviceRemainDays = service.lastUseDate;
@@ -793,11 +799,8 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="charge-progress-row">
           <div class="charge-progress-info">
             <span class="charge-icon">⚡</span>
-            <span class="charge-percent">${a.vehicle.batteryPercent}%</span>
-            ${chargeEta ? `<span class="charge-eta">${chargeEta}</span>` : ""}
-          </div>
-          <div class="charge-progress-bar">
-            <div class="charge-progress-fill" style="width:${a.vehicle.batteryPercent}%"></div>
+            <span class="charge-percent">充电中 ${a.vehicle.batteryPercent}%</span>
+            ${a.vehicle.batteryPercent >= 100 ? `<span class="charge-eta">已充满</span>` : (chargeEta ? `<span class="charge-eta">${chargeEta}</span>` : "")}
           </div>
         </div>` : ""}
         <div class="vehicle-kpi">
@@ -924,12 +927,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .battery-item{font-size:11px;color:#475569;display:flex;align-items:center;gap:4px;background:#F8FAFC;padding:4px 8px;border-radius:6px}
 .battery-icon{font-size:12px}
 .charge-progress-row{margin-bottom:8px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px}
-.charge-progress-info{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.charge-progress-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .charge-icon{font-size:14px}
 .charge-percent{font-size:13px;font-weight:700;color:#059669}
 .charge-eta{font-size:11px;color:#059669;background:#D1FAE5;padding:2px 8px;border-radius:10px}
-.charge-progress-bar{height:8px;background:#E2E8F0;border-radius:4px;overflow:hidden}
-.charge-progress-fill{height:100%;background:linear-gradient(90deg,#10B981,#34D399);border-radius:4px;transition:width .5s ease}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
 .loc-time{color:#CBD5E1;font-size:9px}
 .service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
