@@ -630,8 +630,20 @@ async function fetchVehicleInfo(acc, cfg) {
     }
     if (service) {
       result.serviceEndDate = service.rechargeEndDate;
-      result.serviceRemainDays = service.lastUseDate;
       result.serviceStatus = service.serviceRechargeStatus;
+      // 用智能服务到期日期计算剩余天数，不用lastUseDate
+      if (service.rechargeEndDate) {
+        try {
+          const endDate = new Date(service.rechargeEndDate.replace(/\./g, "-"));
+          const now = new Date();
+          const diffMs = endDate.getTime() - now.getTime();
+          result.serviceRemainDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        } catch(e) {
+          result.serviceRemainDays = service.lastUseDate || 0;
+        }
+      } else {
+        result.serviceRemainDays = service.lastUseDate || 0;
+      }
       if (service.vehicleName) result.vehicleName = service.vehicleName;
     }
   } catch(e) {}
@@ -771,7 +783,8 @@ async function fetchAccountData(acc, cfg) {
     const tokenCheck = await checkToken(acc, cfg);
     result.tokenValid = tokenCheck.valid;
     result.tokenReason = tokenCheck.reason || null;
-    if (tokenCheck.valid && tokenCheck.userName) result.userName = tokenCheck.userName;
+    // 昵称优先使用配置中保存的，配置为空时才用token检测返回的
+    if (tokenCheck.valid && tokenCheck.userName && (!result.userName || result.userName === "未知用户")) result.userName = tokenCheck.userName;
   } catch(e) { result.tokenValid = true; }
   return result;
 }
