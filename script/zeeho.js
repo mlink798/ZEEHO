@@ -627,37 +627,99 @@ async function getCookie() {
   const header = ObjectKeys2LowerCase($request.headers);
   const token = header['authorization'];
   const userAgent = header['user-agent'];
+  const reqUrl = $request?.url || "";
   const body = $.toObj($response.body);
-  if (!body) {
+  if (!body || !token) {
     return;
   }
 
-  // 优先从 body.data.id 获取（setting接口），失败则递归搜索整个响应
-  let userId = body?.data?.id || body?.data?.userId || "";
-  let userName = body?.data?.nickName || body?.data?.userName || "";
-  if (!userId && body.data) userId = findUserIdInObj(body.data);
-  if (!userId && body) userId = findUserIdInObj(body);
-  if (!userName && body.data) userName = findUserNameInObj(body.data);
-  if (!userName && body) userName = findUserNameInObj(body);
+  // ========== 识别逻辑：区分自己的ID和别人的ID ==========
+  let userId = "";
+  let userName = "";
+  let isSelf = false; // 标记是否是当前用户自己的信息
 
-  if (!userId || !token) {
-    return;
+  // 方式1：从请求URL路径中提取 userId（最可靠，如 /setting/20251009000440652）
+  const pathMatch = reqUrl.match(/\/setting\/(\d+)/);
+  if (pathMatch && pathMatch[1]) {
+    userId = pathMatch[1];
+    isSelf = true;
+    // 从响应中获取昵称
+    userName = body?.data?.nickName || body?.data?.userName || "";
+    if (!userName && body.data) userName = findUserNameInObj(body.data);
   }
 
-  const newData = {
-    "userId": String(userId),
-    "token": token,
-    "userName": userName || "未知用户",
-    "userAgent": userAgent
+  // 方式2：从请求参数中提取 userId，与响应中的 userId 对比
+  if (!isSelf) {
+    const paramMatch = reqUrl.match(/[?&]userId=(\d+)/);
+    const paramUserId = paramMatch ? paramMatch[1] : "";
+    // 从响应中提取 userId
+    let respUserId = body?.data?.id || body?.data?.userId || "";
+    if (!respUserId && body.data) respUserId = findUserIdInObj(body.data);
+    if (!respUserId && body) respUserId = findUserIdInObj(body);
+
+    if (paramUserId && respUserId) {
+      if (paramUserId === respUserId) {
+        // 请求参数中的 userId 与响应中的 userId 相同，说明是查看自己的信息
+        userId = respUserId;
+        isSelf = true;
+        userName = body?.data?.nickName || body?.data?.userName || "";
+        if (!userName && body.data) userName = findUserNameInObj(body.data);
+      } else {
+        // 请求参数中的 userId 与响应中的 userId 不同，说明是查看别人的信息（如粉丝主页）
+        // 不捕获 userId，只更新 token（通过 token 匹配已有账号）
+        isSelf = false;
+      }
+    } else if (!paramUserId && respUserId) {
+      // 请求中没有 userId 参数，响应中有 userId
+      // 根据接口路径判断是否是当前用户的信息
+      if (/\/setting(\/|$)/.test(reqUrl) || /vehicle\/list/.test(reqUrl)) {
+        // /setting 或 /vehicle/list 接口，响应中的 userId 是当前用户的
+        userId = respUserId;
+        isSelf = true;
+        userName = body?.data?.nickName || body?.data?.userName || "";
+        if (!userName && body.data) userName = findUserNameInObj(body.data);
+      } else {
+        // 其他接口（粉丝列表、关注列表等），响应中的 userId 可能是别人的
+        // 不捕获 userId，只更新 token
+        isSelf = false;
+      }
+    }
   }
 
+  // ========== 保存逻辑 ==========
   userCookie = userCookie ? JSON.parse(userCookie) : [];
-  const index = userCookie.findIndex(e => String(e.userId) === String(newData.userId));
 
-  userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
-
-  $.setjson(userCookie, ckName);
-  $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
+  if (isSelf && userId) {
+    // 确认是当前用户自己的信息，新增或更新账号
+    const newData = {
+      "userId": String(userId),
+      "token": token,
+      "userName": userName || "未知用户",
+      "userAgent": userAgent
+    };
+    const index = userCookie.findIndex(e => String(e.userId) === String(newData.userId));
+    userCookie[index] ? userCookie[index] = newData : userCookie.push(newData);
+    $.setjson(userCookie, ckName);
+    $.msg($.name, `🎉${newData.userName}更新token成功!`, ``);
+  } else {
+    // 不是当前用户自己的信息（如查看粉丝主页），只通过 token 更新已有账号的 token
+    // 不新增账号，避免把别人的ID和自己的token绑定
+    const cleanToken = String(token || "").replace(/^[bB]earer\s+/i, "").trim();
+    let updated = false;
+    for (let i = 0; i < userCookie.length; i++) {
+      const accToken = String(userCookie[i].token || "").replace(/^[bB]earer\s+/i, "").trim();
+      if (accToken === cleanToken) {
+        userCookie[i].token = token;
+        if (userAgent) userCookie[i].userAgent = userAgent;
+        updated = true;
+        break;
+      }
+    }
+    if (updated) {
+      $.setjson(userCookie, ckName);
+    }
+    // 不弹通知，避免干扰
+  }
 }
 
 // ========== 社区任务开关配置 ==========
