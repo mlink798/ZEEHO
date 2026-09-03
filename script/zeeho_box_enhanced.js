@@ -34,13 +34,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v1.0.0
+// 版本: v2.1.5
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.1.4";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (${VERSION_DATE})`);
+const SCRIPT_VERSION = "v2.1.5";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -1446,7 +1446,10 @@ function renderConfig(accounts, cfg) {
     <div class="acc-row" data-idx="${idx}">
       <div class="acc-row-head">
         <span class="acc-row-title">账号 ${idx + 1}</span>
-        <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="refreshUserId(${idx})" id="refresh_btn_${idx}">获取ID</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
+        </div>
       </div>
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
@@ -1603,7 +1606,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="refreshUserId('+idx+')" id="refresh_btn_'+idx+'">获取ID</button><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1614,6 +1617,28 @@ function addAccount() {
 function deleteAccount(idx) {
   var row = document.querySelector('.acc-row[data-idx="'+idx+'"]');
   if (row) { row.remove(); showToast('已删除（需点击保存）'); }
+}
+function refreshUserId(idx) {
+  var tokenEl = document.getElementById('acc_token_'+idx);
+  var uidEl = document.getElementById('acc_uid_'+idx);
+  var nameEl = document.getElementById('acc_name_'+idx);
+  var btn = document.getElementById('refresh_btn_'+idx);
+  if (!tokenEl || !tokenEl.value.trim()) { showToast('请先填写Token', 'err'); return; }
+  btn.textContent = '获取中...';
+  btn.disabled = true;
+  fetch('/api/refresh-userid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: tokenEl.value.trim()}) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok && d.userId) {
+        if (uidEl) uidEl.value = d.userId;
+        if (nameEl && d.nickName && !nameEl.value) nameEl.value = d.nickName;
+        showToast('获取成功: '+d.nickName);
+      } else {
+        showToast('获取失败: '+(d.msg||'未知错误'), 'err');
+      }
+    })
+    .catch(function(){ showToast('获取失败', 'err'); })
+    .finally(function(){ btn.textContent = '获取ID'; btn.disabled = false; });
 }
 function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
