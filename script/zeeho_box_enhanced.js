@@ -671,6 +671,7 @@ async function fetchAccountData(acc, cfg) {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
       "interfaceversion": "2",
+      "user_id": userId,
       ...signH
     });
     if (infoRes.code == "10000" && infoRes.data) {
@@ -1041,14 +1042,21 @@ var autoRefreshCountdown = 60;
 function startAutoRefresh() {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
   autoRefreshCountdown = 60;
+  updateAutoRefreshBtn();
   autoRefreshTimer = setInterval(function() {
     autoRefreshCountdown--;
-    var btn = document.getElementById('autoRefreshBtn');
-    if (btn) btn.textContent = '自动刷新(' + autoRefreshCountdown + 's)';
+    // 负数保护
+    if (autoRefreshCountdown < 0) autoRefreshCountdown = 0;
+    updateAutoRefreshBtn();
     if (autoRefreshCountdown <= 0) {
+      if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
       location.reload();
     }
   }, 1000);
+}
+function updateAutoRefreshBtn() {
+  var btn = document.getElementById('autoRefreshBtn');
+  if (btn) btn.textContent = '自动刷新(' + autoRefreshCountdown + 's)';
 }
 function toggleAutoRefresh() {
   var btn = document.getElementById('autoRefreshBtn');
