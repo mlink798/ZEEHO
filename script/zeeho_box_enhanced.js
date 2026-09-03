@@ -7,7 +7,7 @@
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
 
 [Script]
-# 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
+# 面板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
 http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
@@ -442,9 +442,11 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
       const d = res.data;
       const soc = Number(d.bmssoc || d.batteryLevel || 0);
       const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || 0);
+      const voltage = Number(d.voltage || d.batteryVoltage || d.bmsVoltage || d.totalVoltage || d.batteryTotalVoltage || 0);
       return {
         batteryPercent: Math.max(0, Math.min(100, isFinite(soc) ? soc : 0)),
         residualRangeKm: isFinite(range) ? range : 0,
+        voltage: isFinite(voltage) && voltage > 0 ? voltage : 0,
         address: String(d.address || "").trim(),
         locationTime: String(d.location?.locationTime || "").trim(),
         vehicleName: String(d.vehicleName || "").trim(),
@@ -547,7 +549,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, batteryPercent: 0, residualRangeKm: 0, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -566,6 +568,7 @@ async function fetchVehicleInfo(acc, cfg) {
     if (widgets) {
       result.batteryPercent = widgets.batteryPercent;
       result.residualRangeKm = widgets.residualRangeKm;
+      result.voltage = widgets.voltage;
       result.address = widgets.address;
       result.locationTime = widgets.locationTime;
       if (widgets.vehicleName) result.vehicleName = widgets.vehicleName;
@@ -755,6 +758,10 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <div class="v-kpi">
             <div class="v-kpi-val" style="color:${a.vehicle.batteryPercent <= 20 ? "#EF4444" : a.vehicle.batteryPercent <= 50 ? "#F59E0B" : "#0891B2"}">${a.vehicle.batteryPercent}%</div>
             <div class="v-kpi-lbl">电量</div>
+          </div>
+          <div class="v-kpi">
+            <div class="v-kpi-val">${a.vehicle.voltage ? a.vehicle.voltage.toFixed(1) + "V" : "-"}</div>
+            <div class="v-kpi-lbl">电压</div>
           </div>
           <div class="v-kpi">
             <div class="v-kpi-val">${a.vehicle.residualRangeKm}</div>
@@ -1028,10 +1035,6 @@ function renderConfig(accounts, cfg) {
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
       </div>
-      <div class="vin-row" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button type="button" class="btn btn-sm" onclick="getVehicleVin(${idx})" style="padding:5px 12px;font-size:11px">获取车架号</button>
-        <span id="vin_result_${idx}" style="font-size:11px;color:#64748B"></span>
-      </div>
     </div>`).join('');
 
   return `<!DOCTYPE html>
@@ -1180,7 +1183,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div><div class="vin-row" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-sm" onclick="getVehicleVin('+idx+')" style="padding:5px 12px;font-size:11px">获取车架号</button><span id="vin_result_'+idx+'" style="font-size:11px;color:#64748B"></span></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1191,41 +1194,6 @@ function addAccount() {
 function deleteAccount(idx) {
   var row = document.querySelector('.acc-row[data-idx="'+idx+'"]');
   if (row) { row.remove(); showToast('已删除（需点击保存）'); }
-}
-function getVehicleVin(idx) {
-  var tokenInput = document.getElementById('acc_token_' + idx);
-  var uidInput = document.getElementById('acc_uid_' + idx);
-  var resultEl = document.getElementById('vin_result_' + idx);
-  var token = tokenInput ? tokenInput.value.trim() : '';
-  var userId = uidInput ? uidInput.value.trim() : '';
-  if (!token) {
-    resultEl.textContent = '请先输入Token';
-    resultEl.style.color = '#EF4444';
-    return;
-  }
-  resultEl.textContent = '获取中...';
-  resultEl.style.color = '#64748B';
-  fetch('/api/get-vehicle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: token, userId: userId}) })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if (d.ok && d.vehicles && d.vehicles.length > 0) {
-        var html = d.vehicles.map(function(v){
-          return v.name + ' (' + v.vinNo + ')';
-        }).join('<br>');
-        resultEl.innerHTML = html;
-        resultEl.style.color = '#0891B2';
-      } else if (d.ok) {
-        resultEl.textContent = '该账号未绑定车辆';
-        resultEl.style.color = '#F59E0B';
-      } else {
-        resultEl.textContent = '获取失败: ' + (d.error || '未知错误');
-        resultEl.style.color = '#EF4444';
-      }
-    })
-    .catch(function(){
-      resultEl.textContent = '获取失败';
-      resultEl.style.color = '#EF4444';
-    });
 }
 function saveAccounts() {
   var rows = document.querySelectorAll('.acc-row');
@@ -1287,20 +1255,6 @@ function sendResp(status, headers, body) {
     const list = Array.isArray(body.accounts) ? body.accounts : [];
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
-    return;
-  }
-
-  // API: 获取账号车辆列表（车架号）
-  if (method === "POST" && path === "/api/get-vehicle") {
-    const body = parseBody($request);
-    const cfg = getConfig();
-    const acc = { token: body.token || "", userId: body.userId || "", userName: "" };
-    try {
-      const vehicles = await fetchVehicleList(acc, cfg);
-      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, vehicles: vehicles }));
-    } catch(e) {
-      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, error: String(e) }));
-    }
     return;
   }
 
