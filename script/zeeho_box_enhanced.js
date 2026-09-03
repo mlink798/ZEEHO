@@ -39,7 +39,7 @@ const $ = new Env("极核看板增强版");
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.1.3";
+const SCRIPT_VERSION = "v2.1.4";
 console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (${VERSION_DATE})`);
 
 // ========== 自动捕获 appId/appSecret ==========
