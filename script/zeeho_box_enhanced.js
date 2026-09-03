@@ -1,7 +1,7 @@
 /*
 #!name=极核 ZEEHO 签到面板
 #!desc=多账号实时数据面板 + 网页配置(appid/sign/token)，访问 http://zeeho.box
-#!author=lucky
+#author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
