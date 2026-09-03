@@ -7,8 +7,8 @@
 图标: https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png
 
 [Script]
-# 看板重写：拦截 http://zeeho.box，脚本内生成 HTML 看板
-http-request ^http://zeeho\.box script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核看板
+# 看板+捕获：拦截 zeeho.box 显示面板，同时拦截极核API自动捕获 appId/appSecret
+http-request ^https?://(zeeho\.box|.*zeehoev\.com)/.* script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=60, tag=极核面板
 
 # 获取 Cookie：打开极核App-我的，自动捕获 Authorization/userId
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
@@ -32,6 +32,53 @@ hostname = tapi.zeehoev.com, zeeho.box
  */
 
 const $ = new Env("极核看板增强版");
+
+// ========== 自动捕获 appId/appSecret ==========
+// 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
+// 打开极核App时，API请求被拦截 → 自动提取appId保存 → 放行请求
+(function autoCapture() {
+  try {
+    const url = $request.url;
+    // 只处理极核API请求（zeehoev.com），zeeho.box 走面板逻辑
+    if (!url.includes('zeehoev.com')) return;
+    
+    const headers = $request.headers;
+    const param = headers['cfmoto-x-param'] || headers['Cfmoto-X-Param'] || headers['CFMOTO-X-PARAM'] || '';
+    const match = param.match(/appId=([^&]+)/i);
+    
+    if (match) {
+      const appId = match[1];
+      const type = url.includes('h5.zeehoev.com') ? 'h5' : 'app';
+      const typeName = type === 'h5' ? 'H5端' : 'App端';
+      
+      // 已知的 appSecret（无法从请求自动捕获，需手动配置）
+      const knownSecrets = {
+        'Sw5F9uJi': '46870a8f678a09109468f5b0168818b91c292845',
+        'S7qPWPU1': 'c5e0da7f4da28df805694ec3dd1fc6792e9df99d'
+      };
+      const appSecret = knownSecrets[appId] || '';
+      
+      // 保存到 $persistentStore
+      const idKey = type === 'h5' ? 'zeeho_h5_appId' : 'zeeho_app_appId';
+      const secretKey = type === 'h5' ? 'zeeho_h5_appSecret' : 'zeeho_app_appSecret';
+      const savedId = $persistentStore.read(idKey);
+      
+      if (savedId !== appId) {
+        $persistentStore.write(appId, idKey);
+        if (appSecret) $persistentStore.write(appSecret, secretKey);
+        console.log('[极核捕获] ' + typeName + ' appId已保存: ' + appId);
+      }
+    }
+    
+    // ⚠️ 关键：捕获完成后必须放行请求，否则极核App会卡住
+    $done({});
+    return true; // 标记已处理，阻止后续面板逻辑执行
+  } catch(e) {
+    console.log('[极核捕获] 异常:', e);
+    $done({});
+    return true;
+  }
+})();
 
 // ========== 存储键名 ==========
 const CK_CONFIG = "zeeho_config";
