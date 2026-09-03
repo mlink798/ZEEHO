@@ -1628,15 +1628,15 @@ function refreshUserId(idx) {
   if (!tokenEl || !tokenEl.value.trim()) { showToast('请先填写Token', 'err'); return; }
   btn.textContent = '获取中...';
   btn.disabled = true;
-  fetch('/api/refresh-userid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: tokenEl.value.trim()}) })
+  fetch('/api/get-userid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: tokenEl.value.trim()}) })
     .then(function(r){ return r.json(); })
     .then(function(d){
       if (d.ok && d.userId) {
         if (uidEl) uidEl.value = d.userId;
-        if (nameEl && d.nickName && !nameEl.value) nameEl.value = d.nickName;
-        showToast('获取成功: '+d.nickName);
+        if (nameEl && d.userName && !nameEl.value) nameEl.value = d.userName;
+        showToast('获取成功: '+(d.userName||d.userId));
       } else {
-        showToast('获取失败: '+(d.msg||'未知错误'), 'err');
+        showToast('获取失败: '+(d.error||'未知错误'), 'err');
       }
     })
     .catch(function(){ showToast('获取失败', 'err'); })
