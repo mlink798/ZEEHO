@@ -138,7 +138,8 @@
         <label>Authorization（Token，不含 Bearer）</label>
         <textarea id="q_token" placeholder="粘贴 UUID 格式的 Token"></textarea>
       </div>
-      <button class="btn btn-success" onclick="queryInfo()" id="queryBtn">查询信息</button>
+      <button class="btn btn-success" onclick="queryInfo()" id="queryBtn">发送查询请求</button>
+      <div style="margin-top:10px;font-size:11px;color:#888;line-height:1.6;">💡 查询请求通过 Bark 发送，手机端 Loon 拦截后查询极核 API，结果通过 Bark 通知推送到手机。需 Loon 已启用且面板脚本为最新版。</div>
       <div class="result" id="q_result"></div>
       <div id="q_detail"></div>
     </div>
@@ -404,85 +405,26 @@ function parseSignInfo(data,today){
   };
 }
 
+// 查询：通过 Bark 发送查询请求，服务端(Loon)拦截后查极核API，结果通过 Bark 推送回来
 async function queryInfo(){
   const token=cleanToken(document.getElementById('q_token').value);
   if(!token){showResult('q_result','error','❌ 请输入 Authorization');return;}
+  if(!UUID_RE.test(token)){showResult('q_result','error','❌ Token 格式错误，应为 UUID 格式');return;}
   const btn=document.getElementById('queryBtn');
-  btn.disabled=true;btn.textContent='查询中...';
-  showResult('q_result','info','⏳ 正在查询...');
-  document.getElementById('q_detail').innerHTML='';
+  btn.disabled=true;btn.textContent='发送中...';
+  showResult('q_result','info','⏳ 正在发送查询请求...');
   try{
-    const now=new Date();
-    const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    const month=today.slice(0,7);
-
-    // 第1步：先拿用户信息（得到 userId，后续接口需要 user_id 头）
-    const userRes=await zeehoFetch('h5','https://h5.zeehoev.com','/cfmotoservermine/baseInfo','server_name=SMART',token).catch(()=>null);
-    if(!userRes||String(userRes.code)!=='10000'||!userRes.data){
-      showResult('q_result','error','❌ Token 无效或已过期：'+(userRes&&(userRes.message||userRes.msg)||'获取用户信息失败'));
-      btn.disabled=false;btn.textContent='查询信息';return;
+    // 通过 Bark 推送查询请求，Loon 拦截 action=query 后执行查询，结果再通过 Bark 推送
+    const barkUrl=`https://api.day.app/${BARK_KEY}/极核查询请求?action=query&token=${encodeURIComponent(token)}`;
+    const res=await fetch(barkUrl);
+    const data=await res.json();
+    if(data.code===200){
+      showResult('q_result','success','✅ 查询请求已发送<br><br>📱 结果将通过 <b>Bark 通知</b> 推送到手机<br>请下拉通知栏查看（含昵称、连签、积分、车辆电量续航）<br><br>⚠️ 需手机端 Loon 已启用且面板脚本为最新版');
+    }else{
+      showResult('q_result','error','❌ Bark 推送失败：'+JSON.stringify(data));
     }
-    const uid=String(userRes.data.id||'');
-    const uh={user_id:uid,'interfaceversion':'2'};
-
-    // 第2步：并行查签到、积分、车辆列表（带 user_id 头）
-    const [signRes,scoreRes,vehicleRes]=await Promise.all([
-      zeehoFetch('h5','https://h5.zeehoev.com','/cfmotoservermine/signin/info',`month=${month}`,token,'GET',uh).catch(()=>null),
-      zeehoFetch('app','https://tapi.zeehoev.com','/v1.0/mine/cfmotoservermine/integral/totalIntegral','',token,'GET',uh).catch(()=>null),
-      zeehoFetch('app','https://tapi.zeehoev.com','/v1.0/app/cfmotoserverapp/vehicle/list','',token,'GET',uh).catch(()=>null)
-    ]);
-
-    let html='';
-    // 用户信息
-    html+=`<div class="info-grid">
-      <div class="info-item"><div class="info-val">${userRes.data.nickName||'-'}</div><div class="info-label">昵称</div></div>
-      <div class="info-item"><div class="info-val" style="font-size:13px;">${uid||'-'}</div><div class="info-label">用户ID</div></div>
-    </div>`;
-
-    // 签到信息（从明细数组计算连签）
-    if(signRes&&String(signRes.code)==='10000'){
-      const s=parseSignInfo(signRes.data,today);
-      html+=`<div class="info-grid">
-        <div class="info-item"><div class="info-val">${s.continueDays}</div><div class="info-label">连签天数</div></div>
-        <div class="info-item"><div class="info-val">${s.signCount}</div><div class="info-label">累计签到</div></div>
-        <div class="info-item"><div class="info-val" style="font-size:13px;">${s.signedToday?'✅ 已签 +'+s.todayScore:'⏳ 今日未签'}</div><div class="info-label">今日状态</div></div>
-      </div>`;
-    }
-
-    // 总积分
-    if(scoreRes&&String(scoreRes.code)==='10000'){
-      const d=scoreRes.data||{};
-      html+=`<div class="info-grid">
-        <div class="info-item"><div class="info-val">${d.integralTotal||d.totalIntegral||d.integral||0}</div><div class="info-label">总积分</div></div>
-      </div>`;
-    }
-
-    // 车辆：先拿列表，再用 VIN 调 widgets 取电量/续航/位置/充电状态
-    if(vehicleRes&&String(vehicleRes.code)==='10000'&&Array.isArray(vehicleRes.data)){
-      for(const v of vehicleRes.data){
-        const vin=v.vinNo||'';
-        let w=null;
-        if(vin){
-          w=await zeehoFetch('app','https://tapi.zeehoev.com','/v1.0/app/cfmotoserverapp/vehicle/widgets/'+encodeURIComponent(vin),'',token,'GET',uh).catch(()=>null);
-        }
-        const wd=(w&&String(w.code)==='10000'&&w.data)?w.data:null;
-        const soc=wd?(wd.bmssoc||wd.batteryLevel):(v.bmssoc||v.bmssocStr);
-        const range=wd?(wd.hmiRidableMile||wd.vehicleRidableMile):null;
-        const charge=wd?(wd.chargeStateStr||wd.chargeState||''):'';
-        const addr=wd?(wd.address||''):'';
-        html+=`<div style="background:#f8f9ff;padding:10px;border-radius:8px;font-size:12px;text-align:left;margin-top:8px;line-height:1.9;">
-          <strong style="font-size:13px;">${v.vehicleName||(wd&&wd.vehicleName)||'车辆'}</strong><br>
-          VIN：${vin||'-'}<br>
-          电量：<b>${soc!=null&&soc!==''?soc+'%':'-'}</b> · 续航：<b>${range!=null?range+'km':'-'}</b>${charge&&charge!=='未充电'?' · '+charge:''}<br>
-          车牌：${v.licensePlate||'未绑定'}${addr?'<br>位置：'+addr:''}
-        </div>`;
-      }
-    }
-
-    showResult('q_result','success','✅ 查询成功');
-    document.getElementById('q_detail').innerHTML='<div class="card" style="margin-top:10px;"><h2>查询结果</h2>'+html+'</div>';
   }catch(e){
-    showResult('q_result','error','❌ 查询失败：'+e.message);
+    showResult('q_result','error','❌ 发送失败：'+e.message);
   }
   btn.disabled=false;btn.textContent='查询信息';
 }
