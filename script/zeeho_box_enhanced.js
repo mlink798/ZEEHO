@@ -658,30 +658,32 @@ async function fetchAccountData(acc, cfg) {
     vehicle: { hasVehicle: false }
   };
 
-  // userId 为空时，自动调用 setting 接口获取用户信息（兼容旧账号/新添加账号）
+  // userId 为空时，尝试自动获取（兜底，主要靠配置页手动输入）
   if (!userId) {
     try {
       const signH = getSign("app", {}, '', cfg);
-      const userRes = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", {
+      // 尝试从 vehicle/list 响应中提取 userId
+      const vehicleRes = await httpGet("https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list", {
         "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json;charset=UTF-8",
         "interfaceversion": "2",
         ...signH
       });
-      if (userRes.code == "10000" && userRes.data) {
-        userId = String(userRes.data.id || userRes.data.userId || "");
-        result.userId = userId;
-        result.score = Number(userRes.data.score) || 0;
-        if (userRes.data.nickName) result.userName = userRes.data.nickName;
-        // 自动保存获取到的 userId 到账号数据
-        try {
-          const accounts = getAccounts();
-          const idx = accounts.findIndex(a => cleanToken(a.token) === token);
-          if (idx >= 0 && !accounts[idx].userId) {
-            accounts[idx].userId = userId;
-            saveAccounts(accounts);
-          }
-        } catch(e) {}
+      if (vehicleRes.code == "10000" && vehicleRes.data) {
+        const autoUid = String(vehicleRes.data.userId || vehicleRes.data.uid || vehicleRes.data.id || "");
+        if (autoUid) {
+          userId = autoUid;
+          result.userId = userId;
+          // 自动保存获取到的 userId
+          try {
+            const accounts = getAccounts();
+            const idx = accounts.findIndex(a => cleanToken(a.token) === token);
+            if (idx >= 0 && !accounts[idx].userId) {
+              accounts[idx].userId = userId;
+              saveAccounts(accounts);
+            }
+          } catch(e) {}
+        }
       }
     } catch(e) {}
   }
@@ -1205,9 +1207,9 @@ function renderConfig(accounts, cfg) {
         <span class="acc-row-title">账号 ${idx + 1}</span>
         <button class="btn btn-sm btn-danger" onclick="deleteAccount(${idx})">删除</button>
       </div>
-      <input type="hidden" id="acc_uid_${idx}" value="${a.userId || ''}">
       <div class="form-grid">
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
+        <div class="form-item"><label>用户ID（必填，从抓包响应 data.id 获取）</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div>
       </div>
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
@@ -1311,7 +1313,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     </div>
     <div class="panel-body">
       <div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
-      <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。</div>
+      <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。<br>用户ID获取：打开极核App-我的，抓包 <code>/setting/{userId}</code> 接口，响应体 <code>data.id</code> 即为用户ID。</div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveAccounts()">保存账号</button>
       </div>
@@ -1360,7 +1362,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><input type="hidden" id="acc_uid_'+idx+'" value=""><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID（必填）</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
