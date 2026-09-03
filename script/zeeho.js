@@ -177,6 +177,8 @@ class UserInfo {
       "Content-Type": "application/json;charset=UTF-8",
       "Authorization": this.token,
       "User-Agent": this.userAgent,
+      "user_id": String(this.userId || ""),
+      "interfaceversion": "2",
     }
     this.getRandomTime = () => randomInt(1e3, 3e3);
     this.fetch = async (o) => {
