@@ -144,7 +144,7 @@ const $ = new Env("极核看板增强版");
             accounts.push(acc);
           }
           $persistentStore.write(JSON.stringify(accounts), 'zeeho_data');
-          console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + userId + ')');
+          console.log('[Bark配置] 已保存账号: ' + acc.userName + ' (' + userId + ')' + (barkKey ? ' BarkKey:' + barkKey.substring(0,8) + '...' : ''));
         }
       } catch(e) { console.log('[Bark拦截] 解析异常:', e); }
       $done({});
