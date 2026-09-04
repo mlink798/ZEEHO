@@ -36,13 +36,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.4.0
+// 版本: v2.5.0
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.4.1";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-05 纯极核版)`);
+const SCRIPT_VERSION = "v2.5.0";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-05 新增车辆远程控制：寻车/鸣笛/开坐垫/云端开关锁)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -409,10 +409,12 @@ function httpPost(url, headers, body) {
     }
   });
 }
-function httpPut(url, headers) {
+function httpPut(url, headers, body) {
   return new Promise((resolve) => {
     const isQX = typeof $task !== "undefined";
     const opts = { url, headers, method: "PUT" };
+    // 支持 PUT 携带请求体（开坐垫等接口需要）
+    if (body !== undefined && body !== null) opts.body = typeof body === "string" ? body : JSON.stringify(body);
     if (isQX) {
       $task.fetch(opts).then(
         function(resp) { try { resolve(JSON.parse(resp.body)); } catch(e) { resolve({ error: "parse error", raw: resp.body }); } },
@@ -455,6 +457,194 @@ function getPostIdFromData(data) {
     if (pid) return pid;
   }
   return null;
+}
+
+// ========== 纯JS AES-256-ECB + PKCS7（云端开关锁需要；Loon JS环境无原生AES，已与标准库逐向量比对验证） ==========
+const AES_SBOX = new Uint8Array([
+0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
+0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
+0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,
+0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,
+0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,
+0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,
+0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,
+0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,
+0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,
+0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
+0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
+0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
+]);
+const AES_RCON = new Uint8Array([0x00,0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36,0x6c,0xd8,0xab,0x4d]);
+function aesGMul(a, b) {
+  let p = 0;
+  for (let i = 0; i < 8; i++) {
+    if (b & 1) p ^= a;
+    const hi = a & 0x80;
+    a = (a << 1) & 0xff;
+    if (hi) a ^= 0x1b;
+    b >>= 1;
+  }
+  return p;
+}
+// AES-256 密钥扩展（Nk=8, Nr=14，输出240字节）
+function aesKeyExpansion256(key) {
+  const Nk = 8, Nb = 4, Nr = 14;
+  const w = new Uint8Array(4 * Nb * (Nr + 1));
+  for (let i = 0; i < Nk * 4; i++) w[i] = key[i];
+  for (let i = Nk; i < Nb * (Nr + 1); i++) {
+    let t0 = w[4*(i-1)], t1 = w[4*(i-1)+1], t2 = w[4*(i-1)+2], t3 = w[4*(i-1)+3];
+    if (i % Nk === 0) {
+      const tmp = t0;
+      t0 = AES_SBOX[t1] ^ AES_RCON[i/Nk];
+      t1 = AES_SBOX[t2];
+      t2 = AES_SBOX[t3];
+      t3 = AES_SBOX[tmp];
+    } else if (i % Nk === 4) {
+      t0 = AES_SBOX[t0]; t1 = AES_SBOX[t1]; t2 = AES_SBOX[t2]; t3 = AES_SBOX[t3];
+    }
+    w[4*i]   = w[4*(i-Nk)]   ^ t0;
+    w[4*i+1] = w[4*(i-Nk)+1] ^ t1;
+    w[4*i+2] = w[4*(i-Nk)+2] ^ t2;
+    w[4*i+3] = w[4*(i-Nk)+3] ^ t3;
+  }
+  return w;
+}
+// 加密单个16字节块
+function aesEncryptBlock(input, w) {
+  const Nb = 4, Nr = 14;
+  const s = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) s[i] = input[i];
+  for (let i = 0; i < 16; i++) s[i] ^= w[i];
+  for (let round = 1; round <= Nr; round++) {
+    for (let i = 0; i < 16; i++) s[i] = AES_SBOX[s[i]];
+    let t = s[1]; s[1]=s[5]; s[5]=s[9]; s[9]=s[13]; s[13]=t;
+    t=s[2]; s[2]=s[10]; s[10]=t; t=s[6]; s[6]=s[14]; s[14]=t;
+    t=s[3]; s[3]=s[15]; s[15]=s[11]; s[11]=s[7]; s[7]=t;
+    if (round !== Nr) {
+      for (let c = 0; c < 4; c++) {
+        const i = 4*c;
+        const a0=s[i],a1=s[i+1],a2=s[i+2],a3=s[i+3];
+        s[i]   = aesGMul(a0,2)^aesGMul(a1,3)^a2^a3;
+        s[i+1] = a0^aesGMul(a1,2)^aesGMul(a2,3)^a3;
+        s[i+2] = a0^a1^aesGMul(a2,2)^aesGMul(a3,3);
+        s[i+3] = aesGMul(a0,3)^a1^a2^aesGMul(a3,2);
+      }
+    }
+    const off = round*16;
+    for (let i = 0; i < 16; i++) s[i] ^= w[off+i];
+  }
+  return s;
+}
+function aesUtf8Bytes(str) {
+  const out = [];
+  for (let i = 0; i < str.length; i++) {
+    let c = str.charCodeAt(i);
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xc0|(c>>6), 0x80|(c&0x3f));
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      const c2 = str.charCodeAt(++i);
+      c = 0x10000 + ((c-0xd800)<<10) + (c2-0xdc00);
+      out.push(0xf0|(c>>18), 0x80|((c>>12)&0x3f), 0x80|((c>>6)&0x3f), 0x80|(c&0x3f));
+    } else out.push(0xe0|(c>>12), 0x80|((c>>6)&0x3f), 0x80|(c&0x3f));
+  }
+  return new Uint8Array(out);
+}
+function aesBytesToBase64(bytes) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let result = "", i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i]<<16)|(bytes[i+1]<<8)|bytes[i+2];
+    result += chars[(n>>18)&63]+chars[(n>>12)&63]+chars[(n>>6)&63]+chars[n&63];
+  }
+  const rem = bytes.length - i;
+  if (rem === 1) { const n = bytes[i]<<16; result += chars[(n>>18)&63]+chars[(n>>12)&63]+"=="; }
+  else if (rem === 2) { const n = (bytes[i]<<16)|(bytes[i+1]<<8); result += chars[(n>>18)&63]+chars[(n>>12)&63]+chars[(n>>6)&63]+"="; }
+  return result;
+}
+// 对外：AES-256-ECB + PKCS7，key为32字节ASCII字符串，返回Base64
+function aes256EcbEncryptBase64(plaintext, keyStr) {
+  const key = aesUtf8Bytes(keyStr);
+  if (key.length !== 32) throw new Error("AES-256需要32字节密钥，当前" + key.length);
+  const w = aesKeyExpansion256(key);
+  const data = aesUtf8Bytes(plaintext);
+  const padLen = 16 - (data.length % 16);
+  const padded = new Uint8Array(data.length + padLen);
+  padded.set(data);
+  for (let i = data.length; i < padded.length; i++) padded[i] = padLen;
+  const out = new Uint8Array(padded.length);
+  for (let off = 0; off < padded.length; off += 16) {
+    out.set(aesEncryptBlock(padded.slice(off, off+16), w), off);
+  }
+  return aesBytesToBase64(out);
+}
+
+// ========== 车辆远程控制（寻车/鸣笛闪灯/开坐垫/云端开关锁，均会真实操作车辆） ==========
+const VEHICLE_AES_KEY = "9dbc2cbf2ec327699301b495010316ec"; // 云端开关锁 AES-256-ECB 密钥（官方App公开值）
+const VEHICLE_ACTION_TEXT = { find: "短按寻车", loudFind: "鸣笛闪灯", cushion: "打开坐垫", unlock: "云端开锁", lock: "云端关锁" };
+function vehicleBaseHeaders(acc, cfg) {
+  const h = {
+    "Authorization": `Bearer ${cleanToken(acc.token)}`,
+    "Content-Type": "application/json;charset=UTF-8",
+    "interfaceversion": "2",
+    "Accept-Language": "zh-CN"
+  };
+  if (acc.userId) h["user_id"] = String(acc.userId);
+  return h;
+}
+function vehicleCheckRes(res, okMsg) {
+  if (res && !res.error && (res.code == "10000" || res.code === 10000)) return { ok: true, message: okMsg };
+  return { ok: false, message: (res && (res.message || res.msg)) || (res && res.error) || "指令下发失败", code: res && res.code };
+}
+async function vehicleControl(acc, action, cfg) {
+  try {
+    const c = cfg || getConfig();
+    // 1) 取 VIN：优先账号已保存，否则实时查车辆列表
+    let vin = acc.vinNo || "";
+    if (!vin) {
+      const list = await fetchVehicleList(acc, c);
+      if (!list || !list.length) return { ok: false, message: "未获取到绑定车辆(VIN)，请确认账号已绑定车辆" };
+      vin = list[0].vinNo;
+    }
+    const base = vehicleBaseHeaders(acc, c);
+    // 2) 按动作下发
+    if (action === "find") {
+      // 短按寻车：PUT control/{vin}，空body
+      const h = { ...base, ...getSign("app", {}, "", c) };
+      const res = await httpPut(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleInfo/control/${vin}`, h);
+      return vehicleCheckRes(res, "寻车指令已下发，车辆应闪灯提示");
+    }
+    if (action === "loudFind") {
+      // 高声寻车（鸣笛+闪灯）：POST controlV2，body {"param":"4","vin":vin}
+      const bodyStr = JSON.stringify({ param: "4", vin: vin });
+      const h = { ...base, ...getSign("app", {}, bodyStr, c) };
+      const res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleInfo/controlV2`, h, bodyStr);
+      return vehicleCheckRes(res, "鸣笛闪灯指令已下发");
+    }
+    if (action === "cushion") {
+      // 开坐垫：PUT propertyTwo/one，commond=28
+      const bodyStr = JSON.stringify({ commond: "28", commondParam: "1", vcu: vin, version: "v2" });
+      const h = { ...base, ...getSign("app", {}, bodyStr, c) };
+      const res = await httpPut(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleSet/propertyTwo/one`, h, bodyStr);
+      return vehicleCheckRes(res, "开坐垫指令已下发，坐垫应弹起");
+    }
+    if (action === "unlock" || action === "lock") {
+      // 云端开关锁：POST network/unlock；明文参与签名，body只发AES密文
+      const lockFlag = action === "unlock" ? 1 : 0;
+      const plainStr = JSON.stringify({ lockFlag: lockFlag, vinNo: vin }); // 字段顺序固定，保证签名/加密稳定
+      const secret = aes256EcbEncryptBase64(plainStr, VEHICLE_AES_KEY);
+      const sendBody = JSON.stringify({ secret: secret });
+      const h = { ...base, ...getSign("app", {}, plainStr, c) }; // 签名签明文，不是密文
+      const res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleSet/network/unlock`, h, sendBody);
+      return vehicleCheckRes(res, action === "unlock" ? "云端开锁指令已下发" : "云端关锁指令已下发");
+    }
+    return { ok: false, message: "未知操作类型: " + action };
+  } catch(e) {
+    return { ok: false, message: "控制异常: " + String(e) };
+  }
 }
 
 
@@ -992,6 +1182,13 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <span>📍 ${a.vehicle.address}</span>
           ${a.vehicle.locationTime ? `<span class="loc-time">· ${a.vehicle.locationTime}</span>` : ""}
         </div>` : ""}
+        <div class="vehicle-ctrl" onclick="event.stopPropagation()">
+          <button class="vctrl-btn" onclick="vehicleCtrl('${a.userId}','find',this)">🔔 寻车</button>
+          <button class="vctrl-btn" onclick="vehicleCtrl('${a.userId}','loudFind',this)">📣 鸣笛</button>
+          <button class="vctrl-btn" onclick="vehicleCtrl('${a.userId}','cushion',this)">💺 坐垫</button>
+          <button class="vctrl-btn vctrl-unlock" onclick="vehicleCtrl('${a.userId}','unlock',this)">🔓 开锁</button>
+          <button class="vctrl-btn vctrl-lock" onclick="vehicleCtrl('${a.userId}','lock',this)">🔒 关锁</button>
+        </div>
       </div>` : ""}
     </div>`;
   }).join('');
@@ -1080,6 +1277,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .charge-eta{font-size:11px;color:#059669;background:#D1FAE5;padding:2px 8px;border-radius:10px}
 .vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
 .loc-time{color:#CBD5E1;font-size:9px}
+.vehicle-ctrl{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px;padding-top:9px;border-top:1px dashed #E2E8F0}
+.vctrl-btn{border:1px solid #CBD5E1;background:#F8FAFC;color:#334155;border-radius:8px;padding:7px 2px;font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .15s}
+.vctrl-btn:active{transform:scale(.94)}
+.vctrl-btn:disabled{opacity:.55;cursor:not-allowed}
+.vctrl-btn.vctrl-unlock{border-color:#86EFAC;background:#F0FDF4;color:#15803D}
+.vctrl-btn.vctrl-lock{border-color:#FCA5A5;background:#FEF2F2;color:#B91C1C}
 .service-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#475569;flex-wrap:wrap}
 .service-icon{font-size:12px}
 .service-text{font-weight:600}
@@ -1290,6 +1493,25 @@ function showVehicleDetail(idx) {
 }
 function closeVehicleModal() {
   document.getElementById('vehicleModal').style.display = 'none';
+}
+// 车辆远程控制：寻车/鸣笛闪灯/开坐垫/云端开关锁（均真实控车，需二次确认）
+function vehicleCtrl(userId, action, btn) {
+  var names = { find:'短按寻车（车辆闪灯）', loudFind:'鸣笛闪灯（高声寻车）', cushion:'打开坐垫（坐垫会弹起）', unlock:'云端开锁', lock:'云端关锁' };
+  var name = names[action] || action;
+  if (!confirm('确定执行【' + name + '】吗？\n该指令会通过 4G 网络真实控制你的车辆！')) return;
+  var old = btn.textContent;
+  btn.disabled = true; btn.textContent = '···';
+  showToast('指令下发中…');
+  fetch('/api/vehicle-control', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ userId:userId, action:action }) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      btn.disabled = false; btn.textContent = old;
+      showToast(d.ok ? ('✅ ' + d.message) : ('❌ ' + (d.message || '指令失败')), d.ok ? '' : 'err');
+    })
+    .catch(function(e){
+      btn.disabled = false; btn.textContent = old;
+      showToast('❌ ' + e, 'err');
+    });
 }
 function showToast(msg, type) {
   var t = document.createElement('div');
@@ -1869,6 +2091,30 @@ function sendResp(status, headers, body) {
       });
     }
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, results: results }));
+    return;
+  }
+
+  // API: 车辆远程控制（find寻车 / loudFind鸣笛闪灯 / cushion开坐垫 / unlock开锁 / lock关锁）
+  if (method === "POST" && path === "/api/vehicle-control") {
+    const body = parseBody($request);
+    const action = String(body.action || "");
+    const cfg = getConfig();
+    const accounts = getAccounts();
+    // 按 userId 定位账号；找不到时兜底取第一个
+    let acc = accounts.find(a => String(a.userId) === String(body.userId));
+    if (!acc && body.userId) acc = accounts[0];
+    if (!acc && accounts.length) acc = accounts[0];
+    if (!acc) {
+      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, message: "未找到账号，请先在配置页添加" }));
+      return;
+    }
+    if (!VEHICLE_ACTION_TEXT[action]) {
+      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, message: "非法操作类型" }));
+      return;
+    }
+    const r = await vehicleControl(acc, action, cfg);
+    console.log(`[车辆控制] ${acc.userName} ${VEHICLE_ACTION_TEXT[action]} => ${r.ok ? "成功" : "失败:" + r.message}`);
+    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify(r));
     return;
   }
 
