@@ -1,6 +1,6 @@
 /*
 #!name=极核 ZEEHO 签到面板
-#!desc=多品牌签到统一面板：极核ZEEHO + 9号Ninebot，访问 http://zeeho.box
+#!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
 
@@ -17,15 +17,9 @@ http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/sett
 # 极核每日签到（每天7点）
 cron "0 7 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js, timeout=120, tag=极核每日签到
 
-# ========== 9号 Ninebot ==========
-# 9号Token自动捕获（打开9号App签到页）
-http-request ^https:\/\/cn-cbu-gateway\.ninebot\.com\/(portal|app-api)\/api\/user-sign\/ script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js, requires-body=true, timeout=30, tag=9号抓Token
-
-# 9号每日签到（每天8点）
-cron "0 8 * * *" script-path=https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/ninebot.js, timeout=60, tag=9号每日签到
 
 [MITM]
-hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, cn-cbu-gateway.ninebot.com
+hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 
 ====================================
 ⚠️【免责声明】
@@ -47,8 +41,8 @@ const $ = new Env("极核看板增强版");
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.4.0";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04 去除Bark拦截)`);
+const SCRIPT_VERSION = "v2.4.1";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-05 纯极核版)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -872,7 +866,7 @@ function parseBody(req) {
 
 
 // ========== HTML: 看板页 ==========
-function renderDashboard(accounts, data, cfg, updateTime, ninebotData) {
+function renderDashboard(accounts, data, cfg, updateTime) {
   const totalScore = data.reduce((s, a) => s + (a.score || 0), 0);
   const signedCount = data.filter(a => a.signedToday).length;
 
@@ -1295,7 +1289,7 @@ function showToast(msg, type) {
 }
 
 // ========== HTML: 配置页 ==========
-function renderConfig(accounts, cfg, ninebotAccounts) {
+function renderConfig(accounts, cfg) {
   const accRows = accounts.map((a, idx) => `
     <div class="acc-row" data-idx="${idx}">
       <div class="acc-row-head">
@@ -1318,27 +1312,6 @@ function renderConfig(accounts, cfg, ninebotAccounts) {
       </div>
     </div>`).join('');
 
-  // 9号账号HTML渲染
-  const ninebotRows = (ninebotAccounts || []).map((a, idx) => `
-    <div class="acc-row" data-idx="${idx}">
-      <div class="acc-row-head">
-        <span class="acc-row-title">9号账号 ${idx + 1}</span>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-danger" onclick="deleteNinebotAccount(${idx})">删除</button>
-        </div>
-      </div>
-      <div class="form-grid">
-        <div class="form-item"><label>昵称（备注）</label><input type="text" id="nb_name_${idx}" value="${a.userName || ''}" placeholder="我的9号"></div>
-        <div class="form-item"><label>deviceId</label><input type="text" id="nb_device_${idx}" value="${a.deviceId || ''}" placeholder="设备ID" style="font-family:monospace;font-size:12px"></div>
-      </div>
-      <div class="form-item" style="margin-top:8px"><label>Authorization Token</label>
-        <input type="text" id="nb_token_${idx}" value="${a.token || ''}" placeholder="9号App的Token" style="font-family:monospace;font-size:12px">
-      </div>
-      <div class="form-item" style="margin-top:8px"><label>Bark API（签到结果推送，可选）</label>
-        <input type="text" id="nb_bark_${idx}" value="${a.barkKey || ''}" placeholder="你的Bark Key" style="font-family:monospace;font-size:12px">
-        <div style="font-size:11px;color:#94A3B8;margin-top:4px">填写后，该账号每日签到结果将独立推送到此Bark。不填则不推送。</div>
-      </div>
-    </div>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -1443,21 +1416,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       </div>
     </div>
 
-    <!-- 9号账号管理 -->
-    <div class="panel">
-      <div class="panel-title"><span class="bar"></span>9号 Ninebot 账号管理</div>
-      <div class="panel-body">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <span style="font-size:13px;color:#64748B">打开9号App签到页自动捕获Token，或手动添加</span>
-          <button class="btn btn-sm" onclick="addNinebotAccount()">+ 添加9号账号</button>
-        </div>
-        <div id="ninebotList">${ninebotRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无9号账号，点击上方「添加9号账号」或打开9号App签到页自动捕获</div>'}</div>
-        <div class="hint">9号Token获取：打开9号App → 签到页面，Loon自动捕获 deviceId + Authorization。<br>签到接口：<code>cn-cbu-gateway.ninebot.com/portal/api/user-sign/</code></div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="saveNinebotAccounts()">保存9号账号</button>
-        </div>
-      </div>
-    </div>
   </div>
 
 </div>
@@ -1555,41 +1513,6 @@ function saveAccounts() {
     .catch(function(){ showToast('保存失败', 'err'); });
 }
 
-// ========== 9号账号前端函数 ==========
-var ninebotCount = 0;
-function addNinebotAccount() {
-  ninebotCount++;
-  var idx = ninebotCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">9号账号 '+ninebotCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm btn-danger" onclick="deleteNinebotAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称（备注）</label><input type="text" id="nb_name_'+idx+'" placeholder="我的9号"></div><div class="form-item"><label>deviceId</label><input type="text" id="nb_device_'+idx+'" placeholder="设备ID" style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="nb_token_'+idx+'" placeholder="9号App的Token" style="font-family:monospace;font-size:12px"></div><div class="form-item" style="margin-top:8px"><label>Bark API（签到结果推送，可选）</label><input type="text" id="nb_bark_'+idx+'" placeholder="你的Bark Key" style="font-family:monospace;font-size:12px"></div></div>';
-  var list = document.getElementById('ninebotList');
-  if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
-    list.insertAdjacentHTML('beforeend', html);
-  } else {
-    list.innerHTML = html;
-  }
-}
-function deleteNinebotAccount(idx) {
-  var row = document.querySelector('#ninebotList .acc-row[data-idx="'+idx+'"]');
-  if (row) { row.remove(); showToast('已删除（需点击保存）'); }
-}
-function saveNinebotAccounts() {
-  var rows = document.querySelectorAll('#ninebotList .acc-row');
-  var list = [];
-  rows.forEach(function(row) {
-    var idx = row.getAttribute('data-idx');
-    var name = document.getElementById('nb_name_'+idx);
-    var device = document.getElementById('nb_device_'+idx);
-    var token = document.getElementById('nb_token_'+idx);
-    var bark = document.getElementById('nb_bark_'+idx);
-    if (token && token.value.trim() && device && device.value.trim()) {
-      list.push({ userName: name ? name.value : '', deviceId: device.value.trim(), token: token.value.trim(), barkKey: bark ? bark.value.trim() : '' });
-    }
-  });
-  fetch('/api/save-ninebot', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ if(d.ok){ showToast('9号账号已保存'); setTimeout(function(){ location.reload(); }, 800); } else { showToast('保存失败', 'err'); } })
-    .catch(function(){ showToast('保存失败', 'err'); });
-}
 </script>
 <div style="text-align:center;padding:16px;font-size:10px;color:#CBD5E1">脚本版本 ${SCRIPT_VERSION} · 极核 ZEEHO</div>
 </body></html>`;
@@ -1871,29 +1794,6 @@ function sendResp(status, headers, body) {
     return;
   }
 
-  // API: 保存9号账号
-  if (method === "POST" && path === "/api/save-ninebot") {
-    const body = parseBody($request);
-    const list = Array.isArray(body.accounts) ? body.accounts : [];
-    const ok = saveNinebotAccounts(list);
-    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
-    return;
-  }
-
-  // API: 手动执行9号签到
-  if (method === "POST" && path === "/api/ninebot-sign") {
-    const body = parseBody($request);
-    const deviceId = body.deviceId || "";
-    const accounts = getNinebotAccounts();
-    const acc = accounts.find(a => a.deviceId === deviceId);
-    if (!acc) {
-      sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: false, error: "账号不存在" }));
-      return;
-    }
-    const result = await doNinebotSign(acc);
-    sendResp(200, { "Content-Type": "application/json" }, JSON.stringify(result));
-    return;
-  }
 
   // API: 获取全部数据（账号+车辆+配置）
   if (method === "GET" && path === "/api/data") {
@@ -1964,8 +1864,6 @@ function sendResp(status, headers, body) {
   if (path === "/config") {
     const cfg = getConfig();
     const accounts = getAccounts();
-    const ninebotAccounts = getNinebotAccounts();
-    const html = renderConfig(accounts, cfg, ninebotAccounts);
     sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
     return;
   }
