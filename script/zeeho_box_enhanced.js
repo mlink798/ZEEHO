@@ -823,6 +823,19 @@ async function fetchAccountData(acc, cfg) {
     const todayEntry = curList.find(x => x.createDate === today);
     result.signedToday = !!(todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5));
     result.todayScore = todayEntry ? (Number(todayEntry.integralScore) || 0) : 0;
+    // 优先用今日签到运行日志里的准确总得分（签到+盲盒+互动），没有运行记录则回退到签到分
+    try {
+      const _todayLogs = (getLogs() || []).filter(l => l && l.date === today && String(l.userId || "") === String(userId) && l.success);
+      if (_todayLogs.length > 0) {
+        const _tl = _todayLogs[0];
+        result.todayScore = Number(_tl.totalGain) || result.todayScore;
+        result.todayDetail = {
+          signinScore: Number(_tl.signinScore) || 0,
+          blindBoxScore: Number(_tl.blindBoxScore) || 0,
+          interactScore: Number(_tl.interactScore) || 0
+        };
+      }
+    } catch(e) {}
     // 跨月连签：从今天往前数，遇到断签停止（不按月重置）
     const todayIdx = list.findIndex(x => x.createDate === today);
     let cont = 0;
@@ -910,7 +923,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
       ${a.error ? `<div class="acc-err-msg">${a.error}</div>` : ''}
       <div class="acc-kpi">
         <div class="kpi-item"><div class="kpi-val num">${a.score.toLocaleString()}</div><div class="kpi-lbl">总积分</div></div>
-        <div class="kpi-item"><div class="kpi-val num" style="color:#10B981">+${a.todayScore}</div><div class="kpi-lbl">今日签到</div></div>
+        <div class="kpi-item"><div class="kpi-val num" style="color:#10B981">+${a.todayScore}</div><div class="kpi-lbl">今日积分</div></div>
         <div class="kpi-item"><div class="kpi-val num" style="color:#0891B2">${a.continueDays}</div><div class="kpi-lbl">连签天数</div></div>
         <div class="kpi-item"><div class="kpi-val num" style="color:#8B5CF6">${blindRemain}</div><div class="kpi-lbl">距盲盒</div></div>
       </div>
@@ -1838,8 +1851,11 @@ function sendResp(status, headers, body) {
       const r = await runSigninForAccount(acc, cfg);
       results.push(r);
       // 写入日志
+      const _d = new Date();
+      const _ds = _d.getFullYear() + "-" + String(_d.getMonth()+1).padStart(2,"0") + "-" + String(_d.getDate()).padStart(2,"0");
       addLog({
-        time: new Date().toLocaleString("zh-CN", { hour12: false }),
+        time: _d.toLocaleString("zh-CN", { hour12: false }),
+        date: _ds,
         userName: r.userName,
         userId: r.userId,
         success: r.success,
