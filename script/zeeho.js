@@ -28,6 +28,18 @@ hostname = tapi.zeehoev.com
 
 // env.js 全局
 const $ = new Env("极核-ZEEHO");
+
+// ========== 版本信息 ==========
+const SCRIPT_VERSION = "v2.2.0";
+const SCRIPT_VERSION_DATE = "2026-09-04";
+console.log("[版本] 极核签到脚本 " + SCRIPT_VERSION + " (" + SCRIPT_VERSION_DATE + ")");
+// ========== 极核 ZEEHO 签到脚本 ==========
+// 版本: v1.0.0
+// 更新日期: 2026-09-04
+// 作者: @lucky
+// 主页: https://github.com/mlink798/ZEEHO
+// ==========================================
+
 const ckName = "zeeho_data";
 //-------------------- 一般不动变量区域 -------------------------------------
 const Notify = 1;//0为关闭通知,1为打开通知,默认为1
@@ -127,18 +139,41 @@ async function main() {
         // 向绑定的Bark API推送签到结果
         if (user.barkKey) {
           try {
-            const barkTitle = `✅ ${user.userName} 签到成功`;
-            const barkBody = `积分: ${oldScore}+${gain}=${score}
+            // 清洗barkKey：只保留字母数字，去除空格和特殊字符
+            const cleanBarkKey = String(user.barkKey).replace(/[^a-zA-Z0-9]/g, '');
+            if (!cleanBarkKey) {
+              console.log(`⚠️ Bark Key格式无效，跳过推送`);
+            } else {
+              const barkTitle = `✅ ${user.userName} 签到成功`;
+              const barkBody = `积分: ${oldScore}+${gain}=${score}
 连签: ${count}天
 签到: +${integral || 0}
 盲盒: +${integralScore || 0}
 互动: +${interactGain}`;
-            const barkUrl = `https://api.day.app/${user.barkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
-            $httpClient.get(barkUrl, () => {});
-            console.log(`📱 已向绑定Bark推送结果: ${user.barkKey.substring(0,8)}...`);
+              const barkUrl = `https://api.day.app/${cleanBarkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
+              console.log(`📱 正在向Bark推送: ${cleanBarkKey.substring(0,8)}... (标题: ${barkTitle})`);
+              $httpClient.get(barkUrl, (err, resp, body) => {
+                if (err) {
+                  console.log(`⚠️ Bark推送请求失败: ${err}`);
+                } else {
+                  try {
+                    const result = JSON.parse(body);
+                    if (result.code === 200) {
+                      console.log(`✅ Bark推送成功: ${cleanBarkKey.substring(0,8)}...`);
+                    } else {
+                      console.log(`⚠️ Bark推送返回错误: code=${result.code}, message=${result.message || '未知'}`);
+                    }
+                  } catch(e) {
+                    console.log(`⚠️ Bark推送响应解析失败: ${e.message}, body=${body}`);
+                  }
+                }
+              });
+            }
           } catch (e) {
-            console.log(`⚠️ Bark推送失败: ${e.message}`);
+            console.log(`⚠️ Bark推送异常: ${e.message}`);
           }
+        } else {
+          console.log(`ℹ️ 账号「${user.userName}」未配置Bark Key，跳过推送`);
         }
         // 写入运行日志
         addSigninLog({
@@ -167,6 +202,20 @@ async function main() {
           error: "ck失效或请求异常",
           steps: ["执行失败: ck失效或请求异常"]
         });
+        // 签到失败也推送Bark
+        if (user.barkKey) {
+          try {
+            const cleanBarkKey = String(user.barkKey).replace(/[^a-zA-Z0-9]/g, '');
+            if (cleanBarkKey) {
+              const barkTitle = `❌ ${user.userName || user.index} 签到失败`;
+              const barkBody = `原因: ck失效或请求异常
+请检查Token是否过期，重新打开极核App捕获Token`;
+              const barkUrl = `https://api.day.app/${cleanBarkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
+              $httpClient.get(barkUrl, () => {});
+              console.log(`📱 已向Bark推送失败通知: ${cleanBarkKey.substring(0,8)}...`);
+            }
+          } catch(e) { console.log(`⚠️ Bark推送失败: ${e.message}`); }
+        }
         $.failCount++;
       }
     }
@@ -739,11 +788,30 @@ async function Request(o) {
     if (hasBody && body) {
       headers['Content-Length'] = String(body.length);
     }
-    if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
-      // App端签名: body || signQuery（POST有body用body，GET/DELETE用query，参考Dantezcx脚本）
-      const signPayload = (hasBody && body) ? body : signQuery;
+    // App端签名重算: POST有body用body，GET/DELETE用query（动态读取配置，不硬编码）
+    if (headers['cfmoto-x-param'] && method !== 'get' && !hasBody) {
+      // POST/PUT/DELETE无body时，用signQuery作为签名payload
+      const signPayload = signQuery;
       if (signPayload) {
-        const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
+        // 从cfmoto-x-param提取appId，再从配置读取对应appSecret
+        const paramMatch = headers['cfmoto-x-param'].match(/appId=([^&]+)/);
+        const reqAppId = paramMatch ? paramMatch[1] : '';
+        let reqSecret = '';
+        try {
+          const cfgRaw = $.getdata("zeeho_config");
+          if (cfgRaw) {
+            const cfg = JSON.parse(cfgRaw);
+            if (cfg.app && cfg.app.appId === reqAppId) reqSecret = cfg.app.appSecret;
+            else if (cfg.h5 && cfg.h5.appId === reqAppId) reqSecret = cfg.h5.appSecret;
+          }
+        } catch(e) {}
+        if (!reqSecret) {
+          try {
+            reqSecret = $persistentStore.read(reqAppId === 'Sw5F9uJi' ? 'zeeho_h5_appSecret' : 'zeeho_app_appSecret') || '';
+          } catch(e) {}
+        }
+        if (!reqSecret) reqSecret = reqAppId === 'Sw5F9uJi' ? '46870a8f678a09109468f5b0168818b91c292845' : 'c5e0da7f4da28df805694ec3dd1fc6792e9df99d';
+        const signature = `${signPayload}${headers['cfmoto-x-param']}${reqSecret}`;
         const sign = md5(sha1(signature), 32).toString();
         headers['cfmoto-x-sign'] = sign;
         headers['signature'] = sign;
