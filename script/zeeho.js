@@ -99,32 +99,34 @@ async function main() {
         }
         // 获取动态列表
         if (!postId) postId = await user.getArticles();
+        let interactSkipped = false;
         if (!postId) {
-          $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: \u672a\u83b7\u53d6\u5230\u52a8\u6001ID\uff0c\u8df3\u8fc7\u4e92\u52a8\u4efb\u52a1`);
-          $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: 未获取到动态ID`);
-          $.failCount++;
-          continue;
+          $.log(`⚠️ 获取动态失败: 未获取到动态ID，跳过互动任务（不影响签到和推送）`);
+          interactSkipped = true;
+          interactGain = 0;
         }
-        await $.wait(user.getRandomTime());
-        // 点赞
-        if (commCfg.enableLike !== false) {
-          if (await user.thumbsUp(postId)) interactGain += 1;
+        if (!interactSkipped) {
           await $.wait(user.getRandomTime());
-        }
-        // 评论（评论不加分，但分享前必须有评论）
-        if (commCfg.enableComment !== false) {
-          await user.comment(postId);
-          await $.wait(user.getRandomTime());
-        }
-        // 分享动态
-        if (commCfg.enableShare !== false) {
-          if (await user.share(postId)) interactGain += 1;
-          await $.wait(user.getRandomTime());
-        }
-        // 删除动态
-        if (commCfg.enableDelete !== false && postId) {
-          await user.deletePost(postId);
-          await $.wait(user.getRandomTime());
+          // 点赞
+          if (commCfg.enableLike !== false) {
+            if (await user.thumbsUp(postId)) interactGain += 1;
+            await $.wait(user.getRandomTime());
+          }
+          // 评论（评论不加分，但分享前必须有评论）
+          if (commCfg.enableComment !== false) {
+            await user.comment(postId);
+            await $.wait(user.getRandomTime());
+          }
+          // 分享动态
+          if (commCfg.enableShare !== false) {
+            if (await user.share(postId)) interactGain += 1;
+            await $.wait(user.getRandomTime());
+          }
+          // 删除动态
+          if (commCfg.enableDelete !== false && postId) {
+            await user.deletePost(postId);
+            await $.wait(user.getRandomTime());
+          }
         }
         // 查询当前积分（总分）
         const score = await user.getSignInfo();
