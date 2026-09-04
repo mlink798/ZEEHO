@@ -2,7 +2,7 @@
 #!name=极核 ZEEHO 每日签到
 #!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持。仅供个人学习使用。
 #!author=lucky
-#!version=2.4.3
+#!version=2.4.4
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
@@ -695,10 +695,10 @@ function getSign(type, params = {}, body = '') {
   } catch(e) {}
 
   // query不排序、不过滤null，完全照搬原始脚本
-  const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
+  const query = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null).sort().map(key => `${key}=${params[key]}`).join('&')
   const timestamp = new Date().getTime()
   // nonce：h5用uuid，app用timestamp+随机16字符
-  const nonce = type === "h5" ? getUuid() : timestamp + randomChars(16)
+  const nonce = getUuid()
   const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
   const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
   // 【关键！】H5端 = query + param + secret；App端 = bodyStr + param + secret（不加query！）
