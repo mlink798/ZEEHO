@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.4
+#!version=2.4.5
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -61,8 +61,8 @@ async function main() {
       }
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
-      // 签到
-      const integral = (await user.signin()) || 0;
+      // 签到（今日首次签到返回积分；今日已签到返回null）
+      const signResult = await user.signin();
       let integralScore = 0;
       if (user.ckStatus) {
         await $.wait(user.getRandomTime());
@@ -72,7 +72,6 @@ async function main() {
           prize = 0,
           prizes = 0
         } = (await user.getSignRecord()) || {};
-
         await $.wait(user.getRandomTime());
 
         if (prizes >= 30) {
@@ -113,8 +112,13 @@ async function main() {
         // 查询当前积分（总分）
         const score = await user.getSignInfo();
 
-        // 本次增加积分 = 签到 + 盲盒 + 互动任务
-        const gain = (integral || 0) + (integralScore || 0) + interactGain;
+        // ===== 积分统一在最后计算：签到 + 盲盒 + 互动任务 =====
+        // 签到积分：首次签到用signin返回值，已签到场景用签到记录里的prize
+        const signScore = (typeof signResult === 'number' && signResult > 0) ? signResult : (prize || 0);
+        const blindScore = integralScore || 0;
+        const gain = signScore + blindScore + interactGain;
+        // 输出今日得分明细（所有任务完成后的准确总分）
+        $.log(`✅ 今日获得: 签到${signScore} + 盲盒${blindScore} + 互动${interactGain} = 共${gain}分`);
         // 原积分（总分反推）
         const oldScore = typeof score === "number" ? score - gain : "未知";
 
@@ -267,7 +271,7 @@ class UserInfo {
       const prize = todayEntry?.integralScore ? Number(todayEntry.integralScore) : (curRes?.data?.integral || 0);
       // 连签奖励累计次数（仅用于盲盒判断，不在日志显示）
       const prizes = curRes?.data?.signCount || 0;
-      $.log(`✅ 连续签到${count}天 | 今日积分${prize}`);
+      $.log(`✅ 连续签到${count}天`);
       return {
         count,
         prize,
