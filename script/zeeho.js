@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.1
+#!version=2.4.3
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -138,9 +138,11 @@ class UserInfo {
   constructor(user) {
     //默认属性
     this.index = ++userIdx;
-    this.token = user.token || user;
-    this.userId = user.userId;
-    this.userName = user.userName;
+    // 清洗token：去掉Bearer前缀，再统一加上Bearer（面板手动添加的是纯UUID，自动捕获的带Bearer）
+    const rawToken = user.token || user;
+    this.token = "Bearer " + String(rawToken || "").replace(/^[bB]earer\s+/i, "").trim();
+    this.userId = String(user.userId || "").trim();
+    this.userName = user.userName || `账号${this.index}`;
     this.userAgent = user.userAgent || "ZEEHO/5.0 (iPhone; iOS 17.0; Scale/3.00)";
     this.ckStatus = true;
     //请求封装
@@ -148,6 +150,7 @@ class UserInfo {
     this.host = "";
     this.headers = {
       "Content-Type": "application/json;charset=UTF-8",
+      "Accept-Language": "zh-CN",
       "Authorization": this.token,
       "User-Agent": this.userAgent,
       "user_id": this.userId,
@@ -595,9 +598,9 @@ function getSign(type, params = {}, body = '') {
     appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
     appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
   }
-  const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
+  const query = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null).sort().map(key => `${key}=${params[key]}`).join('&')
   const timestamp = new Date().getTime()
-  const nonce = type === "h5" ? getUuid() : timestamp + getRandomChars()
+  const nonce = getUuid()
   const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
   const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
   const signature = type === "h5" ? `${query}${param}${appConfig.appSecret}` : `${bodyStr}${param}${appConfig.appSecret}`
@@ -617,22 +620,25 @@ async function Request(o) {
   if (typeof o === 'string') o = { url: o };
   try {
     if (!o?.url) throw new Error('[发送请求] 缺少 url 参数');
-    // type => 因为env中使用method处理post的特殊请求(put/delete/patch), 所以这里使用type
     let { url: u, type, headers = {}, body: b, params, dataType = 'form', resultType = 'data' } = o;
-    // post请求需要处理params参数(get不需要, env已经处理)
     const method = type ? type?.toLowerCase() : ('body' in o ? 'post' : 'get');
     const query = params ? $.queryStr(params) : '';
     const urlQuery = u.includes('?') ? u.split('?').slice(1).join('?') : '';
     const signQuery = [urlQuery, query].filter(Boolean).join('&');
     const url = u.concat(query ? (u.includes('?') ? '&' : '?') + query : '');
+    const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 15000;
 
-    const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 1e4
-    // 根据jsonType处理headers
     if (dataType === 'json') headers['Content-Type'] = 'application/json;charset=UTF-8';
-    // post请求处理body
-    const body = b && dataType == 'form' ? $.queryStr(b) : $.toStr(b);
+    // 正确处理body：无body时为空字符串，POST空body需要Content-Length:0
+    const hasBody = b !== undefined && b !== null;
+    const body = hasBody ? (dataType == 'form' ? $.queryStr(b) : $.toStr(b)) : '';
+    // POST/PUT/DELETE 无body时设置 Content-Length: 0
+    if (method !== 'get' && !hasBody) headers['Content-Length'] = '0';
+    if (hasBody && body) headers['Content-Length'] = String(body.length);
+
+    // App端签名重算：POST有body用body，GET/DELETE用query
     if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
-      const signPayload = body || signQuery;
+      const signPayload = (hasBody && body) ? body : signQuery;
       if (signPayload) {
         const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
         const sign = md5(sha1(signature), 32).toString();
@@ -640,18 +646,29 @@ async function Request(o) {
         headers['signature'] = sign;
       }
     }
-    const httpMethod = ['get', 'post'].includes(method) ? method : 'post';
-    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method, headers, params: undefined, ...(method !== 'get' && body && { body }), timeout: timeout }
-    const httpPromise = $.http[httpMethod.toLowerCase()](request)
-      .then(response => resultType == 'data' ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
-      .catch(err => $.log(`❌请求发起失败！原因为：${err}`));
-    // 使用Promise.race来强行加入超时处理
+
+    // Env类$.http只有get/post入口，post方法会读取request.method转发给$httpClient
+    const httpEntry = method === 'get' ? 'get' : 'post';
+    const request = { ...o, url, method: method, headers, params: undefined, timeout: timeout };
+    if (method !== 'get') request.body = body;
+
+    const httpPromise = $.http[httpEntry](request)
+      .then(response => {
+        if (resultType == 'data') return $.toObj(response.body) || response.body;
+        return $.toObj(response) || response;
+      })
+      .catch(err => {
+        $.log(`❌请求发起失败！原因为：${err}`);
+        throw err;
+      });
+
     return Promise.race([
-      new Promise((_, e) => setTimeout(() => e('当前请求已超时'), timeout)),
+      new Promise((_, e) => setTimeout(() => e(new Error('当前请求已超时')), timeout)),
       httpPromise
     ]);
   } catch (e) {
-    console.log(`❌请求发起失败！原因为：${e}`);
+    $.log(`❌请求发起失败！原因为：${e}`);
+    return null;
   }
 };
 //生成随机数
