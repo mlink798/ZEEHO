@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.3
+#!version=2.4.4
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -217,83 +217,68 @@ class UserInfo {
       $.log(`⛔️ 签到失败! ${e}`);
     }
   }
-    // 查询签到记录
-
-
+    // 查询签到记录（跨月：当月+上月合并计算实际连签天数，避免每月1号归零）
   async getSignRecord() {
-
   try {
+    const now = new Date();
+    const pad2 = n => String(n).padStart(2, '0');
+    const today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+    // 当月和上月
+    const curMonth = now.getFullYear() + '-' + (now.getMonth() + 1);
+    const lastDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = lastDate.getFullYear() + '-' + (lastDate.getMonth() + 1);
 
-    const params = {
-      month: new Date().getFullYear() + '-' + (new Date().getMonth() + 1),
-    };
-
-    const opts = {
+    // 并行请求当月+上月签到记录
+    const buildOpts = (month) => ({
       url: "https://h5.zeehoev.com/cfmotoservermine/signin/info",
       type: "get",
-      headers: Object.assign({}, this.headers, getSign('h5', params)),
-      params,
+      headers: Object.assign({}, this.headers, getSign('h5', { month })),
+      params: { month },
       dataType: "json"
-    };
+    });
+    const [curRes, lastRes] = await Promise.all([
+      this.fetch(buildOpts(curMonth)),
+      this.fetch(buildOpts(lastMonth))
+    ]);
 
-    let res = await this.fetch(opts);
+    if (curRes?.code == '10000' && curRes?.message == '操作成功') {
+      const curList = curRes?.data?.nowSignDetailVos || [];
+      const lastList = (lastRes?.code == '10000') ? (lastRes?.data?.nowSignDetailVos || []) : [];
+      // 合并上月+当月记录，保证日期顺序连续
+      const list = [...lastList, ...curList];
 
-    if (res?.code == '10000' && res?.message == '操作成功') {
-
-      const list = res?.data?.nowSignDetailVos || [];
-
-      // 今日日期（本地时区，不能用 toISOString，否则 08:00 前会算成前一天 → 累签归零）
-      const now = new Date();
-      const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-
-      // 找到今天索引
-      const todayIndex = list.findIndex(
-        item => item.createDate === today
-      );
-
-      // 连续签到天数
+      // 从今天开始往前统计实际连续签到天数（跨月不归零）
+      const todayIndex = list.findIndex(item => item.createDate === today);
       let count = 0;
-
-      // 从今天开始往前统计
-      for (let i = todayIndex; i >= 0; i--) {
-
-        const status = list[i]?.signStatue;
-
-        // 3=已签到 5=补签
-        if (status == 3 || status == 5) {
-          count++;
-        } else {
-          break;
+      if (todayIndex >= 0) {
+        for (let i = todayIndex; i >= 0; i--) {
+          const status = list[i]?.signStatue;
+          // 3=已签到 5=补签
+          if (status == 3 || status == 5) {
+            count++;
+          } else {
+            break;
+          }
         }
       }
 
-      // 今日积分
-      const prize = res?.data?.integral || 0;
-
-      // 连签累计奖励次数
-      const prizes = res?.data?.signCount || 0;
-
-      $.log(
-        `✅ 连续签到${count}天 | 今日积分${prize} | 连签奖励累计${prizes}`
-      );
-
+      // 今日积分（优先取今日记录的 integralScore）
+      const todayEntry = todayIndex >= 0 ? list[todayIndex] : null;
+      const prize = todayEntry?.integralScore ? Number(todayEntry.integralScore) : (curRes?.data?.integral || 0);
+      // 连签奖励累计次数（仅用于盲盒判断，不在日志显示）
+      const prizes = curRes?.data?.signCount || 0;
+      $.log(`✅ 连续签到${count}天 | 今日积分${prize}`);
       return {
         count,
         prize,
         prizes
       };
-
     }
-
     return null;
-
   } catch (e) {
-
     this.ckStatus = false;
     $.log(`⛔️ 查询签到记录失败! ${e}`);
-
   }
-
 }
     // 开启盲盒
 
