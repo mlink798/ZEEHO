@@ -52,6 +52,13 @@ async function main() {
   try {
     $.log('\n================== 任务 ==================\n');
     for (let user of userList) {
+      // 检查userId是否为空（面板里必须点「获取ID」按钮）
+      if (!user.userId || String(user.userId) === 'undefined' || String(user.userId).trim() === '') {
+        $.log(`⚠️ 账号「${user.userName || user.index}」userId为空，请在面板配置页点「获取ID」按钮自动获取`);
+        $.notifyMsg.push(`❌账号「${user.userName || user.index}」userId为空，请在面板点「获取ID」`);
+        $.failCount++;
+        continue;
+      }
       console.log(`🔷账号${user.index} >> Start work`)
       console.log(`随机延迟${user.getRandomTime()}ms`);
       // 签到
@@ -143,6 +150,8 @@ class UserInfo {
       "Content-Type": "application/json;charset=UTF-8",
       "Authorization": this.token,
       "User-Agent": this.userAgent,
+      "user_id": this.userId,
+      "interfaceversion": "2"
     }
     this.getRandomTime = () => randomInt(1e3, 3e3);
     this.fetch = async (o) => {
