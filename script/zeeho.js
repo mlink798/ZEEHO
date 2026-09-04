@@ -1,8 +1,8 @@
 /*
 #!name=极核 ZEEHO 每日签到
-#!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持，无Bark推送。仅供个人学习使用。
+#!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持。仅供个人学习使用。
 #!author=lucky
-#!version=2.3.1
+#!version=2.4.0
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
@@ -16,7 +16,7 @@ cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/scr
 hostname = tapi.zeehoev.com, h5.zeehoev.com
  */
 
-// ==================== 环境适配类（修复版：Env实例自带get/post/send，$.http提供Promise封装） ====================
+// ==================== 环境适配类 ====================
 function Env(name, opts) {
   return new class {
     constructor(name, opts) {
@@ -30,8 +30,6 @@ function Env(name, opts) {
       Object.assign(this, opts);
       this.log("", `🔔${this.name}, 开始!`);
     }
-
-    // 环境检测
     getEnv() {
       if (typeof $task !== "undefined") return "Quantumult X";
       if (typeof $loon !== "undefined") return "Loon";
@@ -44,8 +42,6 @@ function Env(name, opts) {
     isQuanX() { return this.getEnv() === "Quantumult X"; }
     isSurge() { return this.getEnv() === "Surge"; }
     isLoon() { return this.getEnv() === "Loon"; }
-
-    // JSON工具
     toObj(str, defaultValue = null) { try { return JSON.parse(str); } catch { return defaultValue; } }
     toStr(obj, defaultValue = null) { try { return JSON.stringify(obj); } catch { return defaultValue; } }
     getjson(key, defaultValue) {
@@ -54,8 +50,6 @@ function Env(name, opts) {
       return val;
     }
     setjson(obj, key) { try { return this.setdata(JSON.stringify(obj), key); } catch { return false; } }
-
-    // 持久化存储（支持@语法）
     getdata(key) {
       let val = this.getval(key);
       if (/^@/.test(key)) {
@@ -131,14 +125,9 @@ function Env(name, opts) {
         fs.writeFileSync(path.resolve(this.dataFile), JSON.stringify(this.data));
       }
     }
-
-    // ==================== HTTP请求（核心修复：Env实例自带get/post/send，callback风格） ====================
-    get(request, callback) {
-      this.send(request, "GET", callback);
-    }
-    post(request, callback) {
-      this.send(request, "POST", callback);
-    }
+    // HTTP请求：Env实例自带get/post/send（callback风格，兼容Loon/Surge/QuanX/Node）
+    get(request, callback) { this.send(request, "GET", callback); }
+    post(request, callback) { this.send(request, "POST", callback); }
     send(request, method, callback) {
       request = typeof request === "string" ? { url: request } : request;
       request.method = method;
@@ -157,11 +146,8 @@ function Env(name, opts) {
           const https = require("https");
           const url = new URL(request.url);
           const options = {
-            hostname: url.hostname,
-            path: url.pathname + url.search,
-            method: method,
-            headers: request.headers || {},
-            timeout: request.timeout || 15000
+            hostname: url.hostname, path: url.pathname + url.search,
+            method: method, headers: request.headers || {}, timeout: request.timeout || 15000
           };
           const req = https.request(options, (res) => {
             let data = "";
@@ -177,8 +163,7 @@ function Env(name, opts) {
           break;
       }
     }
-
-    // ==================== $.http：Promise风格封装（供Request函数使用） ====================
+    // $.http：Promise风格封装（供Request函数使用）
     get http() {
       const self = this;
       return {
@@ -190,8 +175,6 @@ function Env(name, opts) {
         })
       };
     }
-
-    // 工具方法
     time(fmt, ts = null) {
       const date = ts ? new Date(ts) : new Date();
       const pad = n => String(n).padStart(2, "0");
@@ -209,8 +192,6 @@ function Env(name, opts) {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(typeof v === "object" ? JSON.stringify(v) : v)}`)
         .join("&");
     }
-
-    // 通知
     msg(title = "", subtitle = "", body = "", opts = {}) {
       if (this.isMute) return;
       const env = this.getEnv();
@@ -221,15 +202,9 @@ function Env(name, opts) {
       }
       this.logs = this.logs.concat(["", "==============📣系统通知📣==============", title, subtitle, body]);
     }
-
-    // 日志
-    log(...logs) {
-      logs.forEach(log => { console.log(log); this.logs.push(log); });
-    }
+    log(...logs) { logs.forEach(log => { console.log(log); this.logs.push(log); }); }
     logErr(err) { this.log("", `❗️${this.name}, 错误!`, err?.message ?? err); }
     wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-    // 结束
     done(val = {}) {
       const duration = ((new Date().getTime() - this.startTime) / 1000).toFixed(2);
       this.log("", `🔔${this.name}, 结束! 🕛 ${duration} 秒`);
@@ -252,6 +227,14 @@ $.failCount = 0;
 
 // ==================== 工具函数 ====================
 function randomInt(min, max) { return Math.round(Math.random() * (max - min) + min); }
+
+// 生成随机字符串（app端nonce用）
+function randomChars(n) {
+  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  let result = "";
+  for (let i = 0; i < n; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  return result;
+}
 
 function getUuid() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
@@ -405,26 +388,29 @@ function sha1(msg) {
   return (cvt_hex(H0) + cvt_hex(H1) + cvt_hex(H2) + cvt_hex(H3) + cvt_hex(H4)).toLowerCase();
 }
 
-// ==================== 签名函数 ====================
-// 极核API签名：md5(sha1(signPayload + cfmoto-x-param + appSecret))
-function getSign(type, params = {}, body = "") {
-  // 默认密钥（可被面板配置覆盖）
-  const appConfig = {
-    appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
-    appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
-  };
+// ==================== 签名函数（对齐Android源码SignUtil.java） ====================
+// 签名公式：md5(sha1(querySorted + bodyStr(DELETE不加) + appId=...&nonce=...&timestamp=... + appSecret))
+// App端：query + body + param + secret
+// H5端：query + param + secret（不加body）
+// nonce：app端 = timestamp + 随机16字符；h5端 = uuid
+function getSign(type, params = {}, body = "", method = "GET") {
+  const APP_ID = "S7qPWPU1";
+  const APP_SECRET = "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
+
   // 从面板配置读取（优先级最高）
+  let appId = APP_ID;
+  let appSecret = APP_SECRET;
   try {
     const cfgRaw = $.getdata("zeeho_config");
     if (cfgRaw) {
       const cfg = JSON.parse(cfgRaw);
       const c = cfg[type] || cfg.app;
-      if (c?.appId) appConfig.appId = c.appId;
-      if (c?.appSecret) appConfig.appSecret = c.appSecret;
+      if (c?.appId) appId = c.appId;
+      if (c?.appSecret) appSecret = c.appSecret;
     }
   } catch (e) { /* 配置读取失败用默认值 */ }
 
-  // 构建query字符串（按key排序）
+  // 构建query字符串（key字典序排序，k=v用&拼接，不做URL encode，跳过null）
   const query = Object.keys(params)
     .filter(k => params[k] !== undefined && params[k] !== null)
     .sort()
@@ -432,16 +418,19 @@ function getSign(type, params = {}, body = "") {
     .join("&");
 
   const timestamp = new Date().getTime();
-  const nonce = getUuid();
-  const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`;
-  const bodyStr = body ? (typeof body === "string" ? body : JSON.stringify(body)) : "";
+  // nonce：app端 = timestamp + 随机16字符；h5端 = uuid
+  const nonce = type === "h5" ? getUuid() : (timestamp + randomChars(16));
+  const param = `appId=${appId}&nonce=${nonce}&timestamp=${timestamp}`;
 
-  // H5端签名: query + param + secret
-  // App端签名: bodyStr + param + secret
-  const signature = type === "h5"
-    ? `${query}${param}${appConfig.appSecret}`
-    : `${bodyStr}${param}${appConfig.appSecret}`;
-  const sign = md5(sha1(signature));
+  // bodyStr：DELETE方法不加body
+  const bodyStr = (method.toUpperCase() === "DELETE" || !body) ? "" : (typeof body === "string" ? body : JSON.stringify(body));
+
+  // 拼接签名字符串
+  let sig = query;
+  if (type !== "h5") sig += bodyStr; // App端加body，H5端不加
+  sig += param + appSecret;
+
+  const sign = md5(sha1(sig));
 
   return {
     "cfmoto-x-param": param,
@@ -453,7 +442,7 @@ function getSign(type, params = {}, body = "") {
   };
 }
 
-// ==================== HTTP请求封装（Request函数，供UserInfo.fetch调用） ====================
+// ==================== HTTP请求封装 ====================
 async function Request(o) {
   if (typeof o === "string") o = { url: o };
   try {
@@ -461,8 +450,6 @@ async function Request(o) {
     let { url: u, type, headers = {}, body: b, params, dataType = "form", resultType = "data" } = o;
     const method = type ? type?.toLowerCase() : ("body" in o ? "post" : "get");
     const query = params ? $.queryStr(params) : "";
-    const urlQuery = u.includes("?") ? u.split("?").slice(1).join("?") : "";
-    const signQuery = [urlQuery, query].filter(Boolean).join("&");
     const url = u.concat(query ? (u.includes("?") ? "&" : "?") + query : "");
     const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 15000;
 
@@ -472,39 +459,14 @@ async function Request(o) {
     if (method !== "get" && !hasBody) headers["Content-Length"] = "0";
     if (hasBody && body) headers["Content-Length"] = String(body.length);
 
-    // App端签名重算: POST/PUT/DELETE无body时用query作为签名payload
-    if (headers["cfmoto-x-param"] && method !== "get" && !hasBody) {
-      const signPayload = signQuery;
-      if (signPayload) {
-        const paramMatch = headers["cfmoto-x-param"].match(/appId=([^&]+)/);
-        const reqAppId = paramMatch ? paramMatch[1] : "";
-        let reqSecret = "";
-        try {
-          const cfgRaw = $.getdata("zeeho_config");
-          if (cfgRaw) {
-            const cfg = JSON.parse(cfgRaw);
-            if (cfg.app && cfg.app.appId === reqAppId) reqSecret = cfg.app.appSecret;
-            else if (cfg.h5 && cfg.h5.appId === reqAppId) reqSecret = cfg.h5.appSecret;
-          }
-        } catch (e) {}
-        if (!reqSecret) reqSecret = reqAppId === "Sw5F9uJi" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
-        const signature = `${signPayload}${headers["cfmoto-x-param"]}${reqSecret}`;
-        const sign = md5(sha1(signature));
-        headers["cfmoto-x-sign"] = sign;
-        headers["signature"] = sign;
-      }
-    }
-
-    // 【核心修复】$.http.get/post 返回Promise，内部调用Env实例的get/post（callback风格）
+    // $.http.get/post 返回Promise，内部调用Env实例的get/post（callback风格）
     const httpEntry = method === "get" ? "get" : "post";
     const request = { ...o, url, method: method, headers, timeout: timeout };
     if (method !== "get") request.body = body;
 
     const httpPromise = $.http[httpEntry](request)
       .then(response => {
-        if (resultType == "data") {
-          return $.toObj(response.body) || response.body;
-        }
+        if (resultType == "data") return $.toObj(response.body) || response.body;
         return $.toObj(response) || response;
       })
       .catch(err => {
@@ -512,7 +474,6 @@ async function Request(o) {
         throw err;
       });
 
-    // 超时保护
     return Promise.race([
       new Promise((_, e) => setTimeout(() => e(new Error("当前请求已超时")), timeout)),
       httpPromise
@@ -533,11 +494,12 @@ class UserInfo {
     this.userId = String(user.userId || "").trim();
     this.userName = user.userName || `账号${this.index}`;
     this.userAgent = user.userAgent || "ZEEHO/5.0 (iPhone; iOS 17.0; Scale/3.00)";
-    this.ckStatus = true; // Token状态：true=有效，false=失效（仅签到接口返回40001时才设为false）
+    this.ckStatus = true; // Token状态：true=有效，false=失效
 
-    // 请求头基础配置
+    // 请求头基础配置（对齐Android源码ApiClient.java）
     this.headers = {
       "Content-Type": "application/json;charset=UTF-8",
+      "Accept-Language": "zh-CN",
       "Authorization": this.token,
       "User-Agent": this.userAgent,
       "user_id": this.userId,
@@ -556,7 +518,7 @@ class UserInfo {
           url: options.url || ""
         };
         const response = await Request(requestOptions);
-        // 只有返回code=40001才标记Token失效，动态任务失败不影响ckStatus
+        // 只有返回code=40001才标记Token失效
         if (response?.code == 40001) {
           this.ckStatus = false;
           throw new Error(response?.message || "Token已过期，请重新登录");
@@ -568,7 +530,7 @@ class UserInfo {
           this.ckStatus = false;
         }
         $.log(`⚠️ 请求失败: ${e.message}`);
-        return null; // 返回null而不是抛出，避免中断后续任务
+        return null;
       }
     };
   }
@@ -576,19 +538,19 @@ class UserInfo {
   // 【签到】先查今日是否已签，未签则执行签到，返回今日积分
   async signin() {
     try {
-      // 使用本地时间计算今日日期，避免UTC时区导致8点前算成前一天
+      // 使用本地时间计算今日日期
       const now = new Date();
       const today = now.getFullYear() + "-" +
         String(now.getMonth() + 1).padStart(2, "0") + "-" +
         String(now.getDate()).padStart(2, "0");
       const month = today.slice(0, 7);
 
-      // 1) 先查今日是否已签到
+      // 1) 先查今日是否已签到（带server_name=SMART，对齐Android源码）
       const infoOpts = {
         url: "https://h5.zeehoev.com/cfmotoservermine/signin/info",
         type: "get",
-        headers: { ...this.headers, ...getSign("h5", { month }) },
-        params: { month }
+        headers: { ...this.headers, ...getSign("h5", { month, server_name: "SMART" }, null, "GET") },
+        params: { month, server_name: "SMART" }
       };
       const infoRes = await this.fetch(infoOpts);
       if (infoRes?.code == "10000") {
@@ -599,11 +561,12 @@ class UserInfo {
         }
       }
 
-      // 2) 执行签到（无参、空body）
+      // 2) 执行签到（POST，带server_name=SMART参数，空body）
       const signOpts = {
         url: "https://h5.zeehoev.com/cfmotoservermine/signin",
         type: "post",
-        headers: { ...this.headers, ...getSign("h5", {}) }
+        headers: { ...this.headers, ...getSign("h5", { server_name: "SMART" }, null, "POST") },
+        params: { server_name: "SMART" }
       };
       const signRes = await this.fetch(signOpts);
       if (signRes?.code == "10000" && signRes?.message == "操作成功") {
@@ -635,14 +598,13 @@ class UserInfo {
       const opts = {
         url: "https://h5.zeehoev.com/cfmotoservermine/signin/info",
         type: "get",
-        headers: { ...this.headers, ...getSign("h5", { month }) },
-        params: { month }
+        headers: { ...this.headers, ...getSign("h5", { month, server_name: "SMART" }, null, "GET") },
+        params: { month, server_name: "SMART" }
       };
       const res = await this.fetch(opts);
       if (res?.code == "10000") {
         const list = res.data?.nowSignDetailVos || [];
         const todayIdx = list.findIndex(item => item.createDate === today);
-        // 从今天往前统计连续签到天数
         let count = 0;
         if (todayIdx >= 0) {
           for (let i = todayIdx; i >= 0; i--) {
@@ -662,7 +624,7 @@ class UserInfo {
     }
   }
 
-  // 【盲盒抽奖】连签满30天可抽一次
+  // 【盲盒抽奖】连签满30天可抽一次（supplementPrize接口）
   async lottery() {
     try {
       const now = new Date();
@@ -672,7 +634,7 @@ class UserInfo {
       const opts = {
         url: "https://h5.zeehoev.com/cfmotoservermine/signin/supplementPrize",
         type: "get",
-        headers: { ...this.headers, ...getSign("h5", { supplementDate: today }) },
+        headers: { ...this.headers, ...getSign("h5", { supplementDate: today }, null, "GET") },
         params: { supplementDate: today }
       };
       const res = await this.fetch(opts);
@@ -690,14 +652,19 @@ class UserInfo {
     }
   }
 
-  // 【创建动态】每日首次发帖+1分
+  // 【创建动态】每日首次发帖+1分（body对齐Android源码：postSubInfo含topicList空数组）
   async createArticle() {
     try {
+      const body = {
+        postSubInfo: { topicList: [] },
+        topicid: "",
+        postcontent: "开心的一天"
+      };
       const opts = {
         url: "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle",
         type: "post",
-        headers: { ...this.headers, ...getSign("app") },
-        body: { postcontent: "开心的一天" }
+        headers: { ...this.headers, ...getSign("app", {}, body, "POST") },
+        body: body
       };
       const res = await this.fetch(opts);
       if (res?.code == "10000") {
@@ -716,11 +683,12 @@ class UserInfo {
   // 【获取动态列表】创建失败时用已有动态
   async getArticles() {
     try {
+      const params = { userId: this.userId };
       const opts = {
         url: "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/mineArticleInfo",
         type: "get",
-        headers: { ...this.headers, ...getSign("app") },
-        params: { userId: this.userId, page: 1, pageSize: 10 }
+        headers: { ...this.headers, ...getSign("app", params, null, "GET") },
+        params: params
       };
       const res = await this.fetch(opts);
       if (res?.code == "10000") {
@@ -739,11 +707,12 @@ class UserInfo {
   // 【点赞动态】+1分
   async thumbsUp(postId) {
     try {
+      const body = { postId: String(postId), kindFlag: "0" };
       const opts = {
         url: "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/socialCommu/likeFavoriteInfo",
         type: "post",
-        headers: { ...this.headers, ...getSign("app") },
-        body: { postId: String(postId), kindFlag: "0" }
+        headers: { ...this.headers, ...getSign("app", {}, body, "POST") },
+        body: body
       };
       const res = await this.fetch(opts);
       const ok = res?.code == "10000";
@@ -758,11 +727,12 @@ class UserInfo {
   // 【评论动态】评论不加分，但分享前必须有评论
   async comment(postId) {
     try {
+      const body = { postid: String(postId), userId: String(this.userId), comments: "厉害", sendTos: "[\n\n]" };
       const opts = {
         url: "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commentInfo",
         type: "post",
-        headers: { ...this.headers, ...getSign("app") },
-        body: { postid: String(postId), userId: String(this.userId), comments: "厉害", sendTos: "[\n\n]" }
+        headers: { ...this.headers, ...getSign("app", {}, body, "POST") },
+        body: body
       };
       const res = await this.fetch(opts);
       $.log(`${res?.code == "10000" ? "✅" : "⚠️"} 评论动态: ${res?.code == "10000" ? "成功" : res?.message || "失败"}`);
@@ -771,13 +741,13 @@ class UserInfo {
     }
   }
 
-  // 【分享动态】+1分
+  // 【分享动态】+1分（PUT，无body，路径含articleId）
   async share(postId) {
     try {
       const opts = {
         url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/article/share/${postId}`,
         type: "put",
-        headers: { ...this.headers, ...getSign("app") }
+        headers: { ...this.headers, ...getSign("app", {}, null, "PUT") }
       };
       const res = await this.fetch(opts);
       const ok = res?.code == "10000";
@@ -796,7 +766,7 @@ class UserInfo {
       const opts = {
         url: "https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/adjustByShare",
         type: "get",
-        headers: { ...this.headers, ...getSign("app") }
+        headers: { ...this.headers, ...getSign("app", {}, null, "GET") }
       };
       const res = await this.fetch(opts);
       $.log(`${res?.code == "10000" ? "✅" : "⚠️"} 分享积分结算: ${res?.code == "10000" ? "已触发" : res?.message || "失败"}`);
@@ -805,13 +775,15 @@ class UserInfo {
     }
   }
 
-  // 【删除动态】清理刚才创建的动态
+  // 【删除动态】清理刚才创建的动态（DELETE，参数放params参与签名，对齐Android源码）
   async deletePost(postId) {
     try {
+      const params = { articleId: String(postId), postType: "1" };
       const opts = {
-        url: `https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle/deleteArticle?articleId=${postId}&postType=1`,
+        url: "https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/commonArticle/deleteArticle",
         type: "delete",
-        headers: { ...this.headers, ...getSign("app") }
+        headers: { ...this.headers, ...getSign("app", params, null, "DELETE") },
+        params: params
       };
       const res = await this.fetch(opts);
       $.log(`${res?.code == "10000" ? "✅" : "⚠️"} 删除动态: ${res?.code == "10000" ? "成功" : res?.message || "失败"}`);
@@ -826,7 +798,7 @@ class UserInfo {
       const opts = {
         url: `https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting/${this.userId}`,
         type: "get",
-        headers: { ...this.headers, ...getSign("app") }
+        headers: { ...this.headers, ...getSign("app", {}, null, "GET") }
       };
       const res = await this.fetch(opts);
       if (res?.code == "10000" && res.data) {
@@ -856,7 +828,6 @@ class UserInfo {
 }
 
 // ==================== Token自动捕获 ====================
-// 打开极核App「我的」页面时自动捕获Authorization和userId
 async function getCookie() {
   if (typeof $request === "undefined") return;
   if ($request.method === "OPTIONS") return;
@@ -866,7 +837,6 @@ async function getCookie() {
     const token = header["authorization"];
     if (!token) return;
 
-    // 从响应体获取用户信息
     const body = $.toObj($response?.body || "{}");
     if (!body?.data) {
       $.msg($.name, "❌获取Cookie失败!", "");
@@ -880,7 +850,6 @@ async function getCookie() {
       userName: nickName || ""
     };
 
-    // 读取已有账号，去重更新
     let accounts = [];
     try {
       const raw = $.getdata(ckName);
@@ -964,8 +933,7 @@ async function main() {
           await $.wait(user.getRandomTime());
         }
 
-        // 4. 社区互动任务（发帖/点赞/评论/分享/删除）
-        // 互动任务任何一步失败都不中断后续流程，全部用try-catch包裹
+        // 4. 社区互动任务
         let interactGain = 0;
         let postId = null;
 
@@ -989,7 +957,7 @@ async function main() {
           interactGain = 0;
         }
 
-        // 4.3 点赞/评论/分享/删除（只有获取到动态ID才执行）
+        // 4.3 点赞/评论/分享/删除
         if (!interactSkipped) {
           await $.wait(user.getRandomTime());
 
@@ -1057,7 +1025,7 @@ async function main() {
         console.log(`❌ 账号${user.index}「${user.userName}」失败: Token失效`);
       }
     } catch (e) {
-      // 单个账号异常不影响其他账号，记录错误继续执行
+      // 单个账号异常不影响其他账号
       $.log(`⛔️ 账号${user.index}「${user.userName}」异常: ${e.message}`);
       $.notifyMsg.push(`❌账号「${user.userName}」异常: ${e.message}`);
       addSigninLog({
@@ -1113,7 +1081,6 @@ async function SendMsg(summary, detail) {
   console.log(`共找到${userList.length}个账号`);
 
   if (userList.length > 0) {
-    // main函数内部已处理所有异常，这里不再throw，确保通知能发送
     try {
       await main();
     } catch (e) {
