@@ -2,7 +2,7 @@
 #!name=极核 ZEEHO 每日签到
 #!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持。仅供个人学习使用。
 #!author=lucky
-#!version=2.4.0
+#!version=2.4.3
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
@@ -248,79 +248,364 @@ function ObjectKeys2LowerCase(obj) {
 }
 
 // MD5算法
-function md5(string) {
-  function add32(a, b) { return (a + b) & 0xFFFFFFFF; }
-  function cmn(q, a, b, x, s, t) { a = add32(add32(a, q), add32(x, t)); return add32((a << s) | (a >>> (32 - s)), b); }
-  function ff(a, b, c, d, x, s, t) { return cmn((b & c) | (~b & d), a, b, x, s, t); }
-  function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & ~d), a, b, x, s, t); }
-  function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
-  function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | ~d), a, b, x, s, t); }
-  function md5cycle(x, k) {
-    let a = x[0], b = x[1], c = x[2], d = x[3];
-    a = ff(a, b, c, d, k[0], 7, -680876936); d = ff(d, a, b, c, k[1], 12, -389564586);
-    c = ff(c, d, a, b, k[2], 17, 606105819); b = ff(b, c, d, a, k[3], 22, -1044525330);
-    a = ff(a, b, c, d, k[4], 7, -176418897); d = ff(d, a, b, c, k[5], 12, 1200080426);
-    c = ff(c, d, a, b, k[6], 17, -1473231341); b = ff(b, c, d, a, k[7], 22, -45705983);
-    a = ff(a, b, c, d, k[8], 7, 1770035416); d = ff(d, a, b, c, k[9], 12, -1958414417);
-    c = ff(c, d, a, b, k[10], 17, -42063); b = ff(b, c, d, a, k[11], 22, -1990404162);
-    a = ff(a, b, c, d, k[12], 7, 1804603682); d = ff(d, a, b, c, k[13], 12, -40341101);
-    c = ff(c, d, a, b, k[14], 17, -1502002290); b = ff(b, c, d, a, k[15], 22, 1236535329);
-    a = gg(a, b, c, d, k[1], 5, -165796510); d = gg(d, a, b, c, k[6], 9, -1069501632);
-    c = gg(c, d, a, b, k[11], 14, 643717713); b = gg(b, c, d, a, k[0], 20, -373897302);
-    a = gg(a, b, c, d, k[5], 5, -701558691); d = gg(d, a, b, c, k[10], 9, 38016083);
-    c = gg(c, d, a, b, k[15], 14, -660478335); b = gg(b, c, d, a, k[4], 20, -405537848);
-    a = gg(a, b, c, d, k[9], 5, 568446438); d = gg(d, a, b, c, k[14], 9, -1019803690);
-    c = gg(c, d, a, b, k[3], 14, -187363961); b = gg(b, c, d, a, k[8], 20, 1163531501);
-    a = gg(a, b, c, d, k[13], 5, -1444681467); d = gg(d, a, b, c, k[2], 9, -51403784);
-    c = gg(c, d, a, b, k[7], 14, 1735328473); b = gg(b, c, d, a, k[12], 20, -1926607734);
-    a = hh(a, b, c, d, k[5], 4, -378558); d = hh(d, a, b, c, k[8], 11, -2022574463);
-    c = hh(c, d, a, b, k[11], 16, 1839030562); b = hh(b, c, d, a, k[14], 23, -35309556);
-    a = hh(a, b, c, d, k[1], 4, -1530992060); d = hh(d, a, b, c, k[4], 11, 1272893353);
-    c = hh(c, d, a, b, k[7], 16, -155497632); b = hh(b, c, d, a, k[10], 23, -1094730640);
-    a = hh(a, b, c, d, k[13], 4, 681279174); d = hh(d, a, b, c, k[0], 11, -358537222);
-    c = hh(c, d, a, b, k[3], 16, -722521979); b = hh(b, c, d, a, k[6], 23, 76029189);
-    a = hh(a, b, c, d, k[9], 4, -640364485); d = hh(d, a, b, c, k[12], 11, -421815835);
-    c = hh(c, d, a, b, k[15], 16, 530742520); b = hh(b, c, d, a, k[2], 23, -995338651);
-    a = ii(a, b, c, d, k[0], 6, -198630844); d = ii(d, a, b, c, k[7], 10, 1126891415);
-    c = ii(c, d, a, b, k[14], 15, -1416354905); b = ii(b, c, d, a, k[5], 21, -57434055);
-    a = ii(a, b, c, d, k[12], 6, 1700485571); d = ii(d, a, b, c, k[3], 10, -1894986606);
-    c = ii(c, d, a, b, k[10], 15, -1051523); b = ii(b, c, d, a, k[1], 21, -2054922799);
-    a = ii(a, b, c, d, k[8], 6, 1873313359); d = ii(d, a, b, c, k[15], 10, -30611744);
-    c = ii(c, d, a, b, k[6], 15, -1560198380); b = ii(b, c, d, a, k[13], 21, 1309151649);
-    a = ii(a, b, c, d, k[4], 6, -145523070); d = ii(d, a, b, c, k[11], 10, -1120210379);
-    c = ii(c, d, a, b, k[2], 15, 718787259); b = ii(b, c, d, a, k[9], 21, -343485551);
-    x[0] = add32(a, x[0]); x[1] = add32(b, x[1]); x[2] = add32(c, x[2]); x[3] = add32(d, x[3]);
-  }
-  function md5blk(s) {
-    const md5blks = [];
-    for (let i = 0; i < 64; i += 4) {
-      md5blks[i >> 2] = s.charCodeAt(i) + (s.charCodeAt(i + 1) << 8) + (s.charCodeAt(i + 2) << 16) + (s.charCodeAt(i + 3) << 24);
-    }
-    return md5blks;
-  }
-  function md51(s) {
-    const n = s.length;
-    const state = [1732584193, -271733879, -1732584194, 271733878];
-    let i;
-    for (i = 64; i <= n; i += 64) md5cycle(state, md5blk(s.substring(i - 64, i)));
-    s = s.substring(i - 64);
-    const tail = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    for (i = 0; i < s.length; i++) tail[i >> 2] |= s.charCodeAt(i) << ((i % 4) << 3);
-    tail[i >> 2] |= 0x80 << ((i % 4) << 3);
-    if (i > 55) { md5cycle(state, tail); for (i = 0; i < 16; i++) tail[i] = 0; }
-    tail[14] = n * 8;
-    md5cycle(state, tail);
-    return state;
-  }
-  function rhex(n) {
-    let s = "";
-    for (let j = 0; j < 4; j++) s += ((n >> (j * 8 + 4)) & 0x0F).toString(16) + ((n >> (j * 8)) & 0x0F).toString(16);
-    return s;
-  }
-  return rhex(md51(string)[0]) + rhex(md51(string)[1]) + rhex(md51(string)[2]) + rhex(md51(string)[3]);
+'use strict'
+
+/**
+ * Add integers, wrapping at 2^32.
+ * This uses 16-bit operations internally to work around bugs in interpreters.
+ *
+ * @param {number} x First integer
+ * @param {number} y Second integer
+ * @returns {number} Sum
+ */
+function safeAdd(x, y) {
+  var lsw = (x & 0xffff) + (y & 0xffff)
+  var msw = (x >> 16) + (y >> 16) + (lsw >> 16)
+  return (msw << 16) | (lsw & 0xffff)
 }
 
-// SHA1算法
+/**
+ * Bitwise rotate a 32-bit number to the left.
+ *
+ * @param {number} num 32-bit number
+ * @param {number} cnt Rotation count
+ * @returns {number} Rotated number
+ */
+function bitRotateLeft(num, cnt) {
+  return (num << cnt) | (num >>> (32 - cnt))
+}
+
+/**
+ * Basic operation the algorithm uses.
+ *
+ * @param {number} q q
+ * @param {number} a a
+ * @param {number} b b
+ * @param {number} x x
+ * @param {number} s s
+ * @param {number} t t
+ * @returns {number} Result
+ */
+function md5cmn(q, a, b, x, s, t) {
+  return safeAdd(bitRotateLeft(safeAdd(safeAdd(a, q), safeAdd(x, t)), s), b)
+}
+/**
+ * Basic operation the algorithm uses.
+ *
+ * @param {number} a a
+ * @param {number} b b
+ * @param {number} c c
+ * @param {number} d d
+ * @param {number} x x
+ * @param {number} s s
+ * @param {number} t t
+ * @returns {number} Result
+ */
+function md5ff(a, b, c, d, x, s, t) {
+  return md5cmn((b & c) | (~b & d), a, b, x, s, t)
+}
+/**
+ * Basic operation the algorithm uses.
+ *
+ * @param {number} a a
+ * @param {number} b b
+ * @param {number} c c
+ * @param {number} d d
+ * @param {number} x x
+ * @param {number} s s
+ * @param {number} t t
+ * @returns {number} Result
+ */
+function md5gg(a, b, c, d, x, s, t) {
+  return md5cmn((b & d) | (c & ~d), a, b, x, s, t)
+}
+/**
+ * Basic operation the algorithm uses.
+ *
+ * @param {number} a a
+ * @param {number} b b
+ * @param {number} c c
+ * @param {number} d d
+ * @param {number} x x
+ * @param {number} s s
+ * @param {number} t t
+ * @returns {number} Result
+ */
+function md5hh(a, b, c, d, x, s, t) {
+  return md5cmn(b ^ c ^ d, a, b, x, s, t)
+}
+/**
+ * Basic operation the algorithm uses.
+ *
+ * @param {number} a a
+ * @param {number} b b
+ * @param {number} c c
+ * @param {number} d d
+ * @param {number} x x
+ * @param {number} s s
+ * @param {number} t t
+ * @returns {number} Result
+ */
+function md5ii(a, b, c, d, x, s, t) {
+  return md5cmn(c ^ (b | ~d), a, b, x, s, t)
+}
+
+/**
+ * Calculate the MD5 of an array of little-endian words, and a bit length.
+ *
+ * @param {Array} x Array of little-endian words
+ * @param {number} len Bit length
+ * @returns {Array<number>} MD5 Array
+ */
+function binlMD5(x, len) {
+  /* append padding */
+  x[len >> 5] |= 0x80 << len % 32
+  x[(((len + 64) >>> 9) << 4) + 14] = len
+
+  var i
+  var olda
+  var oldb
+  var oldc
+  var oldd
+  var a = 1732584193
+  var b = -271733879
+  var c = -1732584194
+  var d = 271733878
+
+  for (i = 0; i < x.length; i += 16) {
+    olda = a
+    oldb = b
+    oldc = c
+    oldd = d
+
+    a = md5ff(a, b, c, d, x[i], 7, -680876936)
+    d = md5ff(d, a, b, c, x[i + 1], 12, -389564586)
+    c = md5ff(c, d, a, b, x[i + 2], 17, 606105819)
+    b = md5ff(b, c, d, a, x[i + 3], 22, -1044525330)
+    a = md5ff(a, b, c, d, x[i + 4], 7, -176418897)
+    d = md5ff(d, a, b, c, x[i + 5], 12, 1200080426)
+    c = md5ff(c, d, a, b, x[i + 6], 17, -1473231341)
+    b = md5ff(b, c, d, a, x[i + 7], 22, -45705983)
+    a = md5ff(a, b, c, d, x[i + 8], 7, 1770035416)
+    d = md5ff(d, a, b, c, x[i + 9], 12, -1958414417)
+    c = md5ff(c, d, a, b, x[i + 10], 17, -42063)
+    b = md5ff(b, c, d, a, x[i + 11], 22, -1990404162)
+    a = md5ff(a, b, c, d, x[i + 12], 7, 1804603682)
+    d = md5ff(d, a, b, c, x[i + 13], 12, -40341101)
+    c = md5ff(c, d, a, b, x[i + 14], 17, -1502002290)
+    b = md5ff(b, c, d, a, x[i + 15], 22, 1236535329)
+
+    a = md5gg(a, b, c, d, x[i + 1], 5, -165796510)
+    d = md5gg(d, a, b, c, x[i + 6], 9, -1069501632)
+    c = md5gg(c, d, a, b, x[i + 11], 14, 643717713)
+    b = md5gg(b, c, d, a, x[i], 20, -373897302)
+    a = md5gg(a, b, c, d, x[i + 5], 5, -701558691)
+    d = md5gg(d, a, b, c, x[i + 10], 9, 38016083)
+    c = md5gg(c, d, a, b, x[i + 15], 14, -660478335)
+    b = md5gg(b, c, d, a, x[i + 4], 20, -405537848)
+    a = md5gg(a, b, c, d, x[i + 9], 5, 568446438)
+    d = md5gg(d, a, b, c, x[i + 14], 9, -1019803690)
+    c = md5gg(c, d, a, b, x[i + 3], 14, -187363961)
+    b = md5gg(b, c, d, a, x[i + 8], 20, 1163531501)
+    a = md5gg(a, b, c, d, x[i + 13], 5, -1444681467)
+    d = md5gg(d, a, b, c, x[i + 2], 9, -51403784)
+    c = md5gg(c, d, a, b, x[i + 7], 14, 1735328473)
+    b = md5gg(b, c, d, a, x[i + 12], 20, -1926607734)
+
+    a = md5hh(a, b, c, d, x[i + 5], 4, -378558)
+    d = md5hh(d, a, b, c, x[i + 8], 11, -2022574463)
+    c = md5hh(c, d, a, b, x[i + 11], 16, 1839030562)
+    b = md5hh(b, c, d, a, x[i + 14], 23, -35309556)
+    a = md5hh(a, b, c, d, x[i + 1], 4, -1530992060)
+    d = md5hh(d, a, b, c, x[i + 4], 11, 1272893353)
+    c = md5hh(c, d, a, b, x[i + 7], 16, -155497632)
+    b = md5hh(b, c, d, a, x[i + 10], 23, -1094730640)
+    a = md5hh(a, b, c, d, x[i + 13], 4, 681279174)
+    d = md5hh(d, a, b, c, x[i], 11, -358537222)
+    c = md5hh(c, d, a, b, x[i + 3], 16, -722521979)
+    b = md5hh(b, c, d, a, x[i + 6], 23, 76029189)
+    a = md5hh(a, b, c, d, x[i + 9], 4, -640364487)
+    d = md5hh(d, a, b, c, x[i + 12], 11, -421815835)
+    c = md5hh(c, d, a, b, x[i + 15], 16, 530742520)
+    b = md5hh(b, c, d, a, x[i + 2], 23, -995338651)
+
+    a = md5ii(a, b, c, d, x[i], 6, -198630844)
+    d = md5ii(d, a, b, c, x[i + 7], 10, 1126891415)
+    c = md5ii(c, d, a, b, x[i + 14], 15, -1416354905)
+    b = md5ii(b, c, d, a, x[i + 5], 21, -57434055)
+    a = md5ii(a, b, c, d, x[i + 12], 6, 1700485571)
+    d = md5ii(d, a, b, c, x[i + 3], 10, -1894986606)
+    c = md5ii(c, d, a, b, x[i + 10], 15, -1051523)
+    b = md5ii(b, c, d, a, x[i + 1], 21, -2054922799)
+    a = md5ii(a, b, c, d, x[i + 8], 6, 1873313359)
+    d = md5ii(d, a, b, c, x[i + 15], 10, -30611744)
+    c = md5ii(c, d, a, b, x[i + 6], 15, -1560198380)
+    b = md5ii(b, c, d, a, x[i + 13], 21, 1309151649)
+    a = md5ii(a, b, c, d, x[i + 4], 6, -145523070)
+    d = md5ii(d, a, b, c, x[i + 11], 10, -1120210379)
+    c = md5ii(c, d, a, b, x[i + 2], 15, 718787259)
+    b = md5ii(b, c, d, a, x[i + 9], 21, -343485551)
+
+    a = safeAdd(a, olda)
+    b = safeAdd(b, oldb)
+    c = safeAdd(c, oldc)
+    d = safeAdd(d, oldd)
+  }
+  return [a, b, c, d]
+}
+
+/**
+ * Convert an array of little-endian words to a string
+ *
+ * @param {Array<number>} input MD5 Array
+ * @returns {string} MD5 string
+ */
+function binl2rstr(input) {
+  var i
+  var output = ''
+  var length32 = input.length * 32
+  for (i = 0; i < length32; i += 8) {
+    output += String.fromCharCode((input[i >> 5] >>> i % 32) & 0xff)
+  }
+  return output
+}
+
+/**
+ * Convert a raw string to an array of little-endian words
+ * Characters >255 have their high-byte silently ignored.
+ *
+ * @param {string} input Raw input string
+ * @returns {Array<number>} Array of little-endian words
+ */
+function rstr2binl(input) {
+  var i
+  var output = []
+  output[(input.length >> 2) - 1] = undefined
+  for (i = 0; i < output.length; i += 1) {
+    output[i] = 0
+  }
+  var length8 = input.length * 8
+  for (i = 0; i < length8; i += 8) {
+    output[i >> 5] |= (input.charCodeAt(i / 8) & 0xff) << i % 32
+  }
+  return output
+}
+
+/**
+ * Calculate the MD5 of a raw string
+ *
+ * @param {string} s Input string
+ * @returns {string} Raw MD5 string
+ */
+function rstrMD5(s) {
+  return binl2rstr(binlMD5(rstr2binl(s), s.length * 8))
+}
+
+/**
+ * Calculates the HMAC-MD5 of a key and some data (raw strings)
+ *
+ * @param {string} key HMAC key
+ * @param {string} data Raw input string
+ * @returns {string} Raw MD5 string
+ */
+function rstrHMACMD5(key, data) {
+  var i
+  var bkey = rstr2binl(key)
+  var ipad = []
+  var opad = []
+  var hash
+  ipad[15] = opad[15] = undefined
+  if (bkey.length > 16) {
+    bkey = binlMD5(bkey, key.length * 8)
+  }
+  for (i = 0; i < 16; i += 1) {
+    ipad[i] = bkey[i] ^ 0x36363636
+    opad[i] = bkey[i] ^ 0x5c5c5c5c
+  }
+  hash = binlMD5(ipad.concat(rstr2binl(data)), 512 + data.length * 8)
+  return binl2rstr(binlMD5(opad.concat(hash), 512 + 128))
+}
+
+/**
+ * Convert a raw string to a hex string
+ *
+ * @param {string} input Raw input string
+ * @returns {string} Hex encoded string
+ */
+function rstr2hex(input) {
+  var hexTab = '0123456789abcdef'
+  var output = ''
+  var x
+  var i
+  for (i = 0; i < input.length; i += 1) {
+    x = input.charCodeAt(i)
+    output += hexTab.charAt((x >>> 4) & 0x0f) + hexTab.charAt(x & 0x0f)
+  }
+  return output
+}
+
+/**
+ * Encode a string as UTF-8
+ *
+ * @param {string} input Input string
+ * @returns {string} UTF8 string
+ */
+function str2rstrUTF8(input) {
+  return unescape(encodeURIComponent(input))
+}
+
+/**
+ * Encodes input string as raw MD5 string
+ *
+ * @param {string} s Input string
+ * @returns {string} Raw MD5 string
+ */
+function rawMD5(s) {
+  return rstrMD5(str2rstrUTF8(s))
+}
+/**
+ * Encodes input string as Hex encoded string
+ *
+ * @param {string} s Input string
+ * @returns {string} Hex encoded string
+ */
+function hexMD5(s) {
+  return rstr2hex(rawMD5(s))
+}
+/**
+ * Calculates the raw HMAC-MD5 for the given key and data
+ *
+ * @param {string} k HMAC key
+ * @param {string} d Input string
+ * @returns {string} Raw MD5 string
+ */
+function rawHMACMD5(k, d) {
+  return rstrHMACMD5(str2rstrUTF8(k), str2rstrUTF8(d))
+}
+/**
+ * Calculates the Hex encoded HMAC-MD5 for the given key and data
+ *
+ * @param {string} k HMAC key
+ * @param {string} d Input string
+ * @returns {string} Raw MD5 string
+ */
+function hexHMACMD5(k, d) {
+  return rstr2hex(rawHMACMD5(k, d))
+}
+
+/**
+ * Calculates MD5 value for a given string.
+ * If a key is provided, calculates the HMAC-MD5 value.
+ * Returns a Hex encoded string unless the raw argument is given.
+ *
+ * @param {string} string Input string
+ * @param {string} [key] HMAC key
+ * @param {boolean} [raw] Raw output switch
+ * @returns {string} MD5 output
+ */
+function md5(string) {
+  return hexMD5(string)
+}
 function sha1(msg) {
   function rotate_left(n, s) { return (n << s) | (n >>> (32 - s)); }
   function cvt_hex(val) {
@@ -388,58 +673,46 @@ function sha1(msg) {
   return (cvt_hex(H0) + cvt_hex(H1) + cvt_hex(H2) + cvt_hex(H3) + cvt_hex(H4)).toLowerCase();
 }
 
-// ==================== 签名函数（对齐Android源码SignUtil.java） ====================
-// 签名公式：md5(sha1(querySorted + bodyStr(DELETE不加) + appId=...&nonce=...&timestamp=... + appSecret))
-// App端：query + body + param + secret
-// H5端：query + param + secret（不加body）
-// nonce：app端 = timestamp + 随机16字符；h5端 = uuid
-function getSign(type, params = {}, body = "", method = "GET") {
-  const APP_ID = "S7qPWPU1";
-  const APP_SECRET = "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
-
-  // 从面板配置读取（优先级最高）
-  let appId = APP_ID;
-  let appSecret = APP_SECRET;
+// ==================== 签名函数（完全照搬原始脚本逻辑，这是能正常工作的关键） ====================
+// H5端：query + param + secret
+// App端：bodyStr + param + secret（不加query，query由Request函数里重算签名时处理）
+// nonce：h5用uuid，app用timestamp+随机16字符
+function getSign(type, params = {}, body = '') {
+  // 配置优先级：看板配置页(zeeho_config) > 默认值
+  let appConfig = {
+    appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
+    appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
+  }
+  // 从看板配置页保存的 zeeho_config 读取（优先级最高）
   try {
     const cfgRaw = $.getdata("zeeho_config");
     if (cfgRaw) {
       const cfg = JSON.parse(cfgRaw);
       const c = cfg[type] || cfg.app;
-      if (c?.appId) appId = c.appId;
-      if (c?.appSecret) appSecret = c.appSecret;
+      if (c && c.appId) appConfig.appId = c.appId;
+      if (c && c.appSecret) appConfig.appSecret = c.appSecret;
     }
-  } catch (e) { /* 配置读取失败用默认值 */ }
+  } catch(e) {}
 
-  // 构建query字符串（key字典序排序，k=v用&拼接，不做URL encode，跳过null）
-  const query = Object.keys(params)
-    .filter(k => params[k] !== undefined && params[k] !== null)
-    .sort()
-    .map(key => `${key}=${params[key]}`)
-    .join("&");
-
-  const timestamp = new Date().getTime();
-  // nonce：app端 = timestamp + 随机16字符；h5端 = uuid
-  const nonce = type === "h5" ? getUuid() : (timestamp + randomChars(16));
-  const param = `appId=${appId}&nonce=${nonce}&timestamp=${timestamp}`;
-
-  // bodyStr：DELETE方法不加body
-  const bodyStr = (method.toUpperCase() === "DELETE" || !body) ? "" : (typeof body === "string" ? body : JSON.stringify(body));
-
-  // 拼接签名字符串
-  let sig = query;
-  if (type !== "h5") sig += bodyStr; // App端加body，H5端不加
-  sig += param + appSecret;
-
-  const sign = md5(sha1(sig));
-
+  // query不排序、不过滤null，完全照搬原始脚本
+  const query = Object.keys(params).map(key => `${key}=${params[key]}`).join('&')
+  const timestamp = new Date().getTime()
+  // nonce：h5用uuid，app用timestamp+随机16字符
+  const nonce = type === "h5" ? getUuid() : timestamp + randomChars(16)
+  const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
+  const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
+  // 【关键！】H5端 = query + param + secret；App端 = bodyStr + param + secret（不加query！）
+  // App端的query会在Request函数里通过重算签名来处理（无body时用query）
+  const signature = type === "h5" ? `${query}${param}${appConfig.appSecret}` : `${bodyStr}${param}${appConfig.appSecret}`
+  const sign = md5(sha1(signature), 32).toString()
   return {
-    "cfmoto-x-param": param,
-    "cfmoto-x-sign": sign,
-    "cfmoto-x-sign-type": "0",
-    "timestamp": String(timestamp),
-    "nonce": nonce,
-    "signature": sign
-  };
+    'cfmoto-x-param': param,
+    'cfmoto-x-sign': sign,
+    'cfmoto-x-sign-type': '0',
+    'timestamp': String(timestamp),
+    'nonce': nonce,
+    'signature': sign
+  }
 }
 
 // ==================== HTTP请求封装 ====================
@@ -450,6 +723,9 @@ async function Request(o) {
     let { url: u, type, headers = {}, body: b, params, dataType = "form", resultType = "data" } = o;
     const method = type ? type?.toLowerCase() : ("body" in o ? "post" : "get");
     const query = params ? $.queryStr(params) : "";
+    // 【关键】提取URL中已有的query参数，用于App端无body时的签名重算
+    const urlQuery = u.includes('?') ? u.split('?').slice(1).join('?') : '';
+    const signQuery = [urlQuery, query].filter(Boolean).join('&');
     const url = u.concat(query ? (u.includes("?") ? "&" : "?") + query : "");
     const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 15000;
 
@@ -458,6 +734,19 @@ async function Request(o) {
     const body = hasBody ? (dataType == "form" ? $.queryStr(b) : $.toStr(b)) : "";
     if (method !== "get" && !hasBody) headers["Content-Length"] = "0";
     if (hasBody && body) headers["Content-Length"] = String(body.length);
+
+    // 【关键！】App端签名重算：有body用body，无body用query
+    // 这是原始脚本能正常工作的核心逻辑，getSign里App端只算了body的签名，
+    // 无body的GET/DELETE请求需要在这里用query重算签名
+    if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
+      const signPayload = body || signQuery;
+      if (signPayload) {
+        const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
+        const sign = md5(sha1(signature), 32).toString();
+        headers['cfmoto-x-sign'] = sign;
+        headers['signature'] = sign;
+      }
+    }
 
     // $.http.get/post 返回Promise，内部调用Env实例的get/post（callback风格）
     const httpEntry = method === "get" ? "get" : "post";
