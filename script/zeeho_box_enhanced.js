@@ -34,12 +34,12 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.2.3
+// 版本: v2.2.5
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.2.3";
+const SCRIPT_VERSION = "v2.2.5";
 console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
 
 // ========== 自动捕获 appId/appSecret ==========
@@ -191,14 +191,17 @@ console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
                     saveAccount(uid, nick);
                     console.log('[Bark配置] 自动获取用户ID成功: ' + uid + ' (' + nick + ')');
                   } else {
-                    console.log('[Bark配置] 获取用户ID失败: 返回数据无id');
+                    console.log('[Bark配置] 获取用户ID失败: 返回数据无id，仍保存token（userId留空）');
+                    saveAccount('', name || ''); // userId留空，先保存token
                   }
                 } else {
-                  console.log('[Bark配置] 获取用户ID失败: ' + (res.message || res.msg || JSON.stringify(res).substring(0,100)));
+                  console.log('[Bark配置] 获取用户ID失败: ' + (res.message || res.msg || JSON.stringify(res).substring(0,100)) + '，仍保存token（userId留空）');
+                  saveAccount('', name || ''); // userId留空，先保存token
                 }
                 $done({});
               }).catch(function(e) {
-                console.log('[Bark配置] 获取用户ID异常: ' + String(e));
+                console.log('[Bark配置] 获取用户ID异常: ' + String(e) + '，仍保存token（userId留空）');
+                saveAccount('', name || ''); // userId留空，先保存token
                 $done({});
               });
               return true; // 异步处理，$done在回调里调用
@@ -1786,7 +1789,17 @@ function sendResp(status, headers, body) {
         }
         return "";
       };
+      // 方式0（最优先，最可靠）：调用 H5 端 baseInfo 接口，不需要 user_id，从 token 直接获取用户信息
+      try {
+        const signH0 = getSign("h5", { server_name: "SMART" }, '', cfg);
+        const res0 = await httpGet("https://h5.zeehoev.com/cfmotoservermine/baseInfo?server_name=SMART", { ...baseHeaders, ...signH0 });
+        if (res0 && String(res0.code) === "10000" && res0.data) {
+          userId = String(res0.data.id || "");
+          userName = String(res0.data.nickName || "");
+        }
+      } catch(e) {}
       // 方式1：调用 /setting（不带userId）获取当前用户信息
+      if (!userId) {
       try {
         const signH = getSign("app", {}, '', cfg);
         const res = await httpGet("https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/setting", { ...baseHeaders, ...signH });
@@ -1796,6 +1809,7 @@ function sendResp(status, headers, body) {
         }
         if (!userId && res.data) userId = findUserId(res.data);
       } catch(e) {}
+      }
       // 方式2：调用积分接口获取用户信息
       if (!userId) {
         try {
