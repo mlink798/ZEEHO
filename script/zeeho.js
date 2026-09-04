@@ -1,7 +1,8 @@
 /*
 #!name=极核 ZEEHO 每日签到
-#!desc=极核打开我的插件自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区任务。仅供个人学习使用。
+#!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持，无Bark推送。仅供个人学习使用。
 #!author=lucky
+#!version=2.3.1
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
@@ -15,24 +16,11 @@ cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/scr
 hostname = tapi.zeehoev.com, h5.zeehoev.com
  */
 
-// ==================== 环境适配类 ====================
+// ==================== 环境适配类（修复版：Env实例自带get/post/send，$.http提供Promise封装） ====================
 function Env(name, opts) {
-  class Http {
-    constructor(env) { this.env = env; }
-    send(request, method = "GET") {
-      request = typeof request === "string" ? { url: request } : request;
-      const sender = method === "POST" ? this.post : this.get;
-      return new Promise((resolve, reject) => {
-        sender.call(this.env, request, (err, resp) => { err ? reject(err) : resolve(resp); });
-      });
-    }
-    get(request) { return this.send.call(this.env, request); }
-    post(request) { return this.send.call(this.env, request, "POST"); }
-  }
   return new class {
     constructor(name, opts) {
       this.name = name;
-      this.http = new Http(this);
       this.data = null;
       this.dataFile = "box.dat";
       this.logs = [];
@@ -42,6 +30,8 @@ function Env(name, opts) {
       Object.assign(this, opts);
       this.log("", `🔔${this.name}, 开始!`);
     }
+
+    // 环境检测
     getEnv() {
       if (typeof $task !== "undefined") return "Quantumult X";
       if (typeof $loon !== "undefined") return "Loon";
@@ -54,6 +44,8 @@ function Env(name, opts) {
     isQuanX() { return this.getEnv() === "Quantumult X"; }
     isSurge() { return this.getEnv() === "Surge"; }
     isLoon() { return this.getEnv() === "Loon"; }
+
+    // JSON工具
     toObj(str, defaultValue = null) { try { return JSON.parse(str); } catch { return defaultValue; } }
     toStr(obj, defaultValue = null) { try { return JSON.stringify(obj); } catch { return defaultValue; } }
     getjson(key, defaultValue) {
@@ -62,6 +54,8 @@ function Env(name, opts) {
       return val;
     }
     setjson(obj, key) { try { return this.setdata(JSON.stringify(obj), key); } catch { return false; } }
+
+    // 持久化存储（支持@语法）
     getdata(key) {
       let val = this.getval(key);
       if (/^@/.test(key)) {
@@ -137,17 +131,13 @@ function Env(name, opts) {
         fs.writeFileSync(path.resolve(this.dataFile), JSON.stringify(this.data));
       }
     }
-    get(request) {
-      this.send(request, "GET", (err, resp, body) => {
-        if (!err && resp) { resp.body = body; resp.statusCode = resp.status ?? resp.statusCode; }
-        this.getCallback(err, resp, body);
-      });
+
+    // ==================== HTTP请求（核心修复：Env实例自带get/post/send，callback风格） ====================
+    get(request, callback) {
+      this.send(request, "GET", callback);
     }
-    post(request) {
-      this.send(request, "POST", (err, resp, body) => {
-        if (!err && resp) { resp.body = body; resp.statusCode = resp.status ?? resp.statusCode; }
-        this.getCallback(err, resp, body);
-      });
+    post(request, callback) {
+      this.send(request, "POST", callback);
     }
     send(request, method, callback) {
       request = typeof request === "string" ? { url: request } : request;
@@ -155,23 +145,53 @@ function Env(name, opts) {
       switch (this.getEnv()) {
         case "Surge": case "Loon": case "Stash": case "Shadowrocket": case "Egern":
         default:
-          $httpClient[method.toLowerCase()](request, callback);
+          $httpClient[method.toLowerCase()](request, (err, resp, body) => {
+            if (!err && resp) { resp.body = body; resp.statusCode = resp.status ?? resp.statusCode; }
+            callback(err, resp, body);
+          });
           break;
         case "Quantumult X":
           $task.fetch(request).then(resp => callback(null, resp, resp.body), err => callback(err));
           break;
         case "Node.js":
-          const axios = require("axios");
-          axios[method.toLowerCase()](request.url, request.body ? request.body : undefined, {
-            headers: request.headers, timeout: request.timeout || 10000
-          }).then(resp => callback(null, resp, resp.data)).catch(err => callback(err));
+          const https = require("https");
+          const url = new URL(request.url);
+          const options = {
+            hostname: url.hostname,
+            path: url.pathname + url.search,
+            method: method,
+            headers: request.headers || {},
+            timeout: request.timeout || 15000
+          };
+          const req = https.request(options, (res) => {
+            let data = "";
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
+              const resp = { statusCode: res.statusCode, headers: res.headers, body: data };
+              callback(null, resp, data);
+            });
+          });
+          req.on("error", err => callback(err));
+          if (request.body) req.write(request.body);
+          req.end();
           break;
       }
     }
-    getCallback(err, resp, body) {
-      if (err) this.logErr(err);
-      else if (resp) this.log(`响应: ${resp.statusCode || resp.status}`);
+
+    // ==================== $.http：Promise风格封装（供Request函数使用） ====================
+    get http() {
+      const self = this;
+      return {
+        get: (request) => new Promise((resolve, reject) => {
+          self.get(request, (err, resp) => { err ? reject(err) : resolve(resp); });
+        }),
+        post: (request) => new Promise((resolve, reject) => {
+          self.post(request, (err, resp) => { err ? reject(err) : resolve(resp); });
+        })
+      };
     }
+
+    // 工具方法
     time(fmt, ts = null) {
       const date = ts ? new Date(ts) : new Date();
       const pad = n => String(n).padStart(2, "0");
@@ -189,6 +209,8 @@ function Env(name, opts) {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(typeof v === "object" ? JSON.stringify(v) : v)}`)
         .join("&");
     }
+
+    // 通知
     msg(title = "", subtitle = "", body = "", opts = {}) {
       if (this.isMute) return;
       const env = this.getEnv();
@@ -199,11 +221,15 @@ function Env(name, opts) {
       }
       this.logs = this.logs.concat(["", "==============📣系统通知📣==============", title, subtitle, body]);
     }
+
+    // 日志
     log(...logs) {
       logs.forEach(log => { console.log(log); this.logs.push(log); });
     }
     logErr(err) { this.log("", `❗️${this.name}, 错误!`, err?.message ?? err); }
     wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    // 结束
     done(val = {}) {
       const duration = ((new Date().getTime() - this.startTime) / 1000).toFixed(2);
       this.log("", `🔔${this.name}, 结束! 🕛 ${duration} 秒`);
@@ -427,7 +453,7 @@ function getSign(type, params = {}, body = "") {
   };
 }
 
-// ==================== HTTP请求封装 ====================
+// ==================== HTTP请求封装（Request函数，供UserInfo.fetch调用） ====================
 async function Request(o) {
   if (typeof o === "string") o = { url: o };
   try {
@@ -438,7 +464,7 @@ async function Request(o) {
     const urlQuery = u.includes("?") ? u.split("?").slice(1).join("?") : "";
     const signQuery = [urlQuery, query].filter(Boolean).join("&");
     const url = u.concat(query ? (u.includes("?") ? "&" : "?") + query : "");
-    const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 1e4;
+    const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 15000;
 
     if (dataType === "json") headers["Content-Type"] = "application/json;charset=UTF-8";
     const hasBody = b !== undefined && b !== null;
@@ -450,7 +476,6 @@ async function Request(o) {
     if (headers["cfmoto-x-param"] && method !== "get" && !hasBody) {
       const signPayload = signQuery;
       if (signPayload) {
-        // 从cfmoto-x-param提取appId，再从配置读取对应appSecret
         const paramMatch = headers["cfmoto-x-param"].match(/appId=([^&]+)/);
         const reqAppId = paramMatch ? paramMatch[1] : "";
         let reqSecret = "";
@@ -470,17 +495,31 @@ async function Request(o) {
       }
     }
 
+    // 【核心修复】$.http.get/post 返回Promise，内部调用Env实例的get/post（callback风格）
     const httpEntry = method === "get" ? "get" : "post";
-    const request = { ...o, ...(o?.opts ? o.opts : {}), url, method: method, headers, params: undefined, ...(method !== "get" ? { body: body } : {}), timeout: timeout };
+    const request = { ...o, url, method: method, headers, timeout: timeout };
+    if (method !== "get") request.body = body;
+
     const httpPromise = $.http[httpEntry](request)
-      .then(response => resultType == "data" ? ($.toObj(response.body) || response.body) : ($.toObj(response) || response))
-      .catch(err => $.log(`❌请求发起失败！原因为：${err}`));
+      .then(response => {
+        if (resultType == "data") {
+          return $.toObj(response.body) || response.body;
+        }
+        return $.toObj(response) || response;
+      })
+      .catch(err => {
+        $.log(`❌请求发起失败！原因为：${err}`);
+        throw err;
+      });
+
+    // 超时保护
     return Promise.race([
-      new Promise((_, e) => setTimeout(() => e("当前请求已超时"), timeout)),
+      new Promise((_, e) => setTimeout(() => e(new Error("当前请求已超时")), timeout)),
       httpPromise
     ]);
   } catch (e) {
-    console.log(`❌请求发起失败！原因为：${e}`);
+    $.log(`❌请求发起失败！原因为：${e}`);
+    return null;
   }
 }
 
@@ -517,15 +556,14 @@ class UserInfo {
           url: options.url || ""
         };
         const response = await Request(requestOptions);
-        // 【修复点1】只有返回code=40001才标记Token失效，动态任务失败不影响ckStatus
+        // 只有返回code=40001才标记Token失效，动态任务失败不影响ckStatus
         if (response?.code == 40001) {
           this.ckStatus = false;
           throw new Error(response?.message || "Token已过期，请重新登录");
         }
         return response;
       } catch (e) {
-        // 【修复点2】catch块不设置ckStatus=false，只有真正的Token失效才标记
-        // 只有错误信息明确包含"登录"或"token"或40001时才可能是Token问题
+        // catch块不设置ckStatus=false，只有真正的Token失效才标记
         if (/登录|token|40001/i.test(e.message || "")) {
           this.ckStatus = false;
         }
@@ -538,7 +576,7 @@ class UserInfo {
   // 【签到】先查今日是否已签，未签则执行签到，返回今日积分
   async signin() {
     try {
-      // 【修复点3】使用本地时间计算今日日期，避免UTC时区导致8点前算成前一天
+      // 使用本地时间计算今日日期，避免UTC时区导致8点前算成前一天
       const now = new Date();
       const today = now.getFullYear() + "-" +
         String(now.getMonth() + 1).padStart(2, "0") + "-" +
@@ -910,7 +948,7 @@ async function main() {
       let integralScore = 0;
       let count = 0;
 
-      // 【修复点4】只有签到成功(ckStatus为true)才继续后续任务
+      // 只有签到成功(ckStatus为true)才继续后续任务
       if (user.ckStatus) {
         await $.wait(user.getRandomTime());
 
@@ -927,7 +965,7 @@ async function main() {
         }
 
         // 4. 社区互动任务（发帖/点赞/评论/分享/删除）
-        // 【修复点5】互动任务任何一步失败都不中断后续流程，全部用try-catch包裹
+        // 互动任务任何一步失败都不中断后续流程，全部用try-catch包裹
         let interactGain = 0;
         let postId = null;
 
@@ -943,7 +981,7 @@ async function main() {
           postId = await user.getArticles();
         }
 
-        // 【修复点6】获取不到动态ID时，跳过互动任务但继续签到积分查询和通知
+        // 获取不到动态ID时，跳过互动任务但继续签到积分查询和通知
         let interactSkipped = false;
         if (!postId) {
           $.log(`⚠️ 未获取到动态ID，跳过互动任务（不影响签到结果和通知）`);
@@ -1019,7 +1057,7 @@ async function main() {
         console.log(`❌ 账号${user.index}「${user.userName}」失败: Token失效`);
       }
     } catch (e) {
-      // 【修复点7】单个账号异常不影响其他账号，记录错误继续执行
+      // 单个账号异常不影响其他账号，记录错误继续执行
       $.log(`⛔️ 账号${user.index}「${user.userName}」异常: ${e.message}`);
       $.notifyMsg.push(`❌账号「${user.userName}」异常: ${e.message}`);
       addSigninLog({
@@ -1075,7 +1113,7 @@ async function SendMsg(summary, detail) {
   console.log(`共找到${userList.length}个账号`);
 
   if (userList.length > 0) {
-    // 【修复点8】main函数内部已处理所有异常，这里不再throw，确保通知能发送
+    // main函数内部已处理所有异常，这里不再throw，确保通知能发送
     try {
       await main();
     } catch (e) {
