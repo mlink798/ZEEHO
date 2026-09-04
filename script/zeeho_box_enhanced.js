@@ -17,7 +17,7 @@ http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/sett
 cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, tag=极核
 
 [MITM]
-hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
+hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 
 ====================================
 ⚠️【免责声明】
@@ -34,13 +34,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.2.5
+// 版本: v2.3.0
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.2.5";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
+const SCRIPT_VERSION = "v2.3.0";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04 去除Bark拦截)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -49,173 +49,6 @@ console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
   try {
     const url = $request.url;
 
-    // ===== Bark 拦截（配置上传 / 查询请求） =====
-    if (url.includes('api.day.app')) {
-      console.log('[Bark拦截] 收到请求: ' + url.substring(0, 120));
-      try {
-        const u = new URL(url);
-        const params = u.searchParams;
-        const action = params.get('action') || 'save';
-        const token = params.get('token') || '';
-        const pathParts = u.pathname.split('/').filter(Boolean);
-        const sourceKey = pathParts[0] || '';
-        // 优先用客户端传的barkKey/callbackKey（绑定的API，接收签到结果），没有才用请求来源Key
-        const callbackKey = params.get('callbackKey') || params.get('barkKey') || '';
-        const barkKey = callbackKey || sourceKey;
-
-        if (action === 'query' && token) {
-          // ===== 查询：查极核API，结果通过 Bark 推送 =====
-          console.log('[Bark查询] 收到查询请求, callbackKey=' + (callbackKey||'无') + ', sourceKey=' + sourceKey);
-          try {
-            const cfg = getConfig();
-            const cleanTok = cleanToken(token);
-            const baseHeaders = { "Authorization": "Bearer " + cleanTok, "Content-Type": "application/json;charset=UTF-8", "interfaceversion": "2" };
-            const now = new Date();
-            const today = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0");
-            const month = today.slice(0,7);
-            const userRes = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/baseInfo?server_name=SMART`, { ...baseHeaders, ...getSign("h5", { server_name: "SMART" }, '', cfg) });
-            const uid = String(userRes?.data?.id || '');
-            const nickName = String(userRes?.data?.nickName || '未知');
-            const uh = uid ? { user_id: uid } : {};
-            const [signRes, scoreRes, vehicleRes] = await Promise.all([
-              httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...uh, ...getSign("h5", { month }, '', cfg) }).catch(()=>null),
-              httpGet(`https://tapi.zeehoev.com/v1.0/mine/cfmotoservermine/integral/totalIntegral`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null),
-              httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/list`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null)
-            ]);
-            let cont=0, signedToday=false, todayScore=0;
-            if (signRes && String(signRes.code)==='10000') {
-              const list = (signRes.data && signRes.data.nowSignDetailVos) || [];
-              const todayIdx = list.findIndex(x => x.createDate === today);
-              if (todayIdx>=0) { for(let i=todayIdx;i>=0;i--){ if(list[i]&&(list[i].signStatue==3||list[i].signStatue==5))cont++;else break; } }
-              const te = todayIdx>=0 ? list[todayIdx] : null;
-              signedToday = !!te && (te.signStatue==3||te.signStatue==5);
-              todayScore = te ? (Number(te.integralScore)||0) : 0;
-            }
-            const totalScore = scoreRes && String(scoreRes.code)==='10000' ? (Number(scoreRes.data?.integralTotal||scoreRes.data?.totalIntegral||0)) : 0;
-            let vehicleText = '';
-            if (vehicleRes && String(vehicleRes.code)==='10000' && Array.isArray(vehicleRes.data)) {
-              for (const v of vehicleRes.data) {
-                const vin = v.vinNo || '';
-                let soc='-', range='-', charge='';
-                if (vin) {
-                  const w = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicle/widgets/${encodeURIComponent(vin)}`, { ...baseHeaders, ...uh, ...getSign("app", {}, '', cfg) }).catch(()=>null);
-                  if (w && String(w.code)==='10000' && w.data) {
-                    soc = String(w.data.bmssoc || w.data.batteryLevel || '-');
-                    range = String(w.data.hmiRidableMile || w.data.vehicleRidableMile || '-');
-                    charge = String(w.data.chargeStateStr || w.data.chargeState || '');
-                  }
-                }
-                vehicleText += `\n🚗 ${v.vehicleName||'车辆'}：${soc}% / ${range}km${charge&&charge!=='未充电'?' · '+charge:''}`;
-              }
-            }
-            const title = `⚡ 极核查询结果(JSON)`;
-            const resultObj = {
-              nickName: nickName,
-              userId: uid || '-',
-              continueDays: cont,
-              signedToday: signedToday,
-              todayScore: todayScore,
-              totalScore: totalScore,
-              vehicles: []
-            };
-            // 车辆信息已在 vehicleText 里，这里也收集结构化数据
-            if (vehicleRes && String(vehicleRes.code)==='10000' && Array.isArray(vehicleRes.data)) {
-              for (const v of vehicleRes.data) {
-                resultObj.vehicles.push({
-                  name: v.vehicleName || '车辆',
-                  vin: v.vinNo || '',
-                  licensePlate: v.licensePlate || ''
-                });
-              }
-            }
-            const body = JSON.stringify(resultObj);
-            if (barkKey) {
-              const pushUrl = `https://api.day.app/${barkKey}/${encodeURIComponent(title)}/${encodeURIComponent(body)}?group=zeeho&autoCopy=1`;
-              await httpGet(pushUrl, {}).catch(()=>{});
-              console.log('[Bark查询] 结果已推送');
-            }
-          } catch(e) { console.log('[Bark查询] 异常:', e); }
-          $done({});
-          return true;
-        }
-
-        // ===== 默认：保存配置 =====
-        const name = params.get('name') || '';
-        let userId = params.get('userId') || '';
-        
-        // 保存账号配置的函数
-        function saveAccount(uid, nick) {
-          let accounts = [];
-          try { accounts = JSON.parse($persistentStore.read('zeeho_data') || '[]'); } catch(e) { accounts = []; }
-          if (!Array.isArray(accounts)) accounts = [];
-          const idx = accounts.findIndex(a => String(a.userId) === String(uid));
-          const acc = { 
-            userName: name || nick || ('账号' + (accounts.length + 1)), 
-            userId: uid, 
-            token: token,
-            barkKey: barkKey || (accounts[idx]?.barkKey || '')
-          };
-          if (idx >= 0) {
-            accounts[idx] = Object.assign({}, accounts[idx], acc);
-          } else {
-            accounts.push(acc);
-          }
-          $persistentStore.write(JSON.stringify(accounts), 'zeeho_data');
-          console.log('[Bark配置] ✅ 已保存账号: ' + acc.userName + ' (' + uid + ')' + (barkKey ? ' BarkKey:' + barkKey.substring(0,8) + '...' : ''));
-          console.log('[Bark配置] 当前账号总数: ' + accounts.length);
-        }
-        
-        if (token) {
-          if (userId) {
-            // 客户端已传userId，直接保存
-            saveAccount(userId, '');
-            $done({});
-            return true;
-          } else {
-            // 客户端没传userId，自动调用baseInfo获取
-            console.log('[Bark配置] 未传userId，自动获取中...');
-            try {
-              const cfg = getConfig();
-              const signHeaders = getSign('h5', { server_name: 'SMART' }, '', cfg);
-              const url = 'https://h5.zeehoev.com/cfmotoservermine/baseInfo?server_name=SMART';
-              const headers = {
-                'Content-Type': 'application/json;charset=UTF-8',
-                'Authorization': 'Bearer ' + token,
-                ...signHeaders
-              };
-              httpGet(url, headers).then(function(res) {
-                if (res && String(res.code) === '10000' && res.data) {
-                  const uid = String(res.data.id || '');
-                  const nick = res.data.nickName || '';
-                  if (uid) {
-                    saveAccount(uid, nick);
-                    console.log('[Bark配置] 自动获取用户ID成功: ' + uid + ' (' + nick + ')');
-                  } else {
-                    console.log('[Bark配置] 获取用户ID失败: 返回数据无id，仍保存token（userId留空）');
-                    saveAccount('', name || ''); // userId留空，先保存token
-                  }
-                } else {
-                  console.log('[Bark配置] 获取用户ID失败: ' + (res.message || res.msg || JSON.stringify(res).substring(0,100)) + '，仍保存token（userId留空）');
-                  saveAccount('', name || ''); // userId留空，先保存token
-                }
-                $done({});
-              }).catch(function(e) {
-                console.log('[Bark配置] 获取用户ID异常: ' + String(e) + '，仍保存token（userId留空）');
-                saveAccount('', name || ''); // userId留空，先保存token
-                $done({});
-              });
-              return true; // 异步处理，$done在回调里调用
-            } catch(e) {
-              console.log('[Bark配置] 获取用户ID异常: ' + String(e));
-              $done({});
-              return true;
-            }
-          }
-        }
-      } catch(e) { console.log('[Bark拦截] 解析异常:', e); }
-      $done({});
-      return true;
-    }
 
     // 只处理极核API请求（zeehoev.com），zeeho.box 走面板逻辑
     if (!url.includes('zeehoev.com')) return;
@@ -1690,8 +1523,8 @@ function sendResp(status, headers, body) {
   }
 
   const url = $request.url || "";
-  // Bark请求和极核API请求由前面的autoCapture处理，主入口跳过，避免$done调用两次
-  if (url.includes('api.day.app') || url.includes('zeehoev.com')) {
+  // 极核API请求由前面的autoCapture处理，主入口跳过，避免$done调用两次
+  if (url.includes('zeehoev.com')) {
     console.log('[主入口] 跳过非面板请求: ' + url.substring(0, 80));
     return; // autoCapture会调用$done
   }
