@@ -223,7 +223,8 @@ async function main() {
     }
   } catch (e) {
     $.log(`⛔️ main run error => ${e}`);
-    throw new Error(`⛔️ main run error => ${e}`);
+    $.notifyMsg.push(`❌ 任务执行异常: ${e.message || e}`);
+    // 不重新抛出异常，确保后面的通知和Bark推送能正常执行
   }
 }
 
