@@ -1,6 +1,6 @@
 /*
 #!name=极核 每日签到 积分任务
-#!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到并推送 iOS 通知。仅供个人学习使用，请勿用于违规用途。
+#!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
@@ -101,7 +101,7 @@ async function main() {
         if (!postId) postId = await user.getArticles();
         let interactSkipped = false;
         if (!postId) {
-          $.log(`⚠️ 获取动态失败: 未获取到动态ID，跳过互动任务（不影响签到和推送）`);
+          $.log(`⚠️ 获取动态失败: 未获取到动态ID，跳过互动任务（不影响签到）`);
           interactSkipped = true;
           interactGain = 0;
         }
@@ -138,45 +138,6 @@ async function main() {
 
         // 汇总到总通知
         $.notifyMsg.push(`「${user.userName}」积分: ${oldScore}+${gain}, 累签: ${count}天`);
-        // 向绑定的Bark API推送签到结果
-        if (user.barkKey) {
-          try {
-            // 清洗barkKey：只保留字母数字，去除空格和特殊字符
-            const cleanBarkKey = String(user.barkKey).replace(/[^a-zA-Z0-9]/g, '');
-            if (!cleanBarkKey) {
-              console.log(`⚠️ Bark Key格式无效，跳过推送`);
-            } else {
-              const barkTitle = `✅ ${user.userName} 签到成功`;
-              const barkBody = `积分: ${oldScore}+${gain}=${score}
-连签: ${count}天
-签到: +${integral || 0}
-盲盒: +${integralScore || 0}
-互动: +${interactGain}`;
-              const barkUrl = `https://api.day.app/${cleanBarkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
-              console.log(`📱 正在向Bark推送: ${cleanBarkKey.substring(0,8)}... (标题: ${barkTitle})`);
-              $httpClient.get(barkUrl, (err, resp, body) => {
-                if (err) {
-                  console.log(`⚠️ Bark推送请求失败: ${err}`);
-                } else {
-                  try {
-                    const result = JSON.parse(body);
-                    if (result.code === 200) {
-                      console.log(`✅ Bark推送成功: ${cleanBarkKey.substring(0,8)}...`);
-                    } else {
-                      console.log(`⚠️ Bark推送返回错误: code=${result.code}, message=${result.message || '未知'}`);
-                    }
-                  } catch(e) {
-                    console.log(`⚠️ Bark推送响应解析失败: ${e.message}, body=${body}`);
-                  }
-                }
-              });
-            }
-          } catch (e) {
-            console.log(`⚠️ Bark推送异常: ${e.message}`);
-          }
-        } else {
-          console.log(`ℹ️ 账号「${user.userName}」未配置Bark Key，跳过推送`);
-        }
         // 写入运行日志
         addSigninLog({
           time: new Date().toLocaleString("zh-CN", { hour12: false }),
@@ -204,27 +165,13 @@ async function main() {
           error: "ck失效或请求异常",
           steps: ["执行失败: ck失效或请求异常"]
         });
-        // 签到失败也推送Bark
-        if (user.barkKey) {
-          try {
-            const cleanBarkKey = String(user.barkKey).replace(/[^a-zA-Z0-9]/g, '');
-            if (cleanBarkKey) {
-              const barkTitle = `❌ ${user.userName || user.index} 签到失败`;
-              const barkBody = `原因: ck失效或请求异常
-请检查Token是否过期，重新打开极核App捕获Token`;
-              const barkUrl = `https://api.day.app/${cleanBarkKey}/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=zeeho_signin`;
-              $httpClient.get(barkUrl, () => {});
-              console.log(`📱 已向Bark推送失败通知: ${cleanBarkKey.substring(0,8)}...`);
-            }
-          } catch(e) { console.log(`⚠️ Bark推送失败: ${e.message}`); }
-        }
         $.failCount++;
       }
     }
   } catch (e) {
     $.log(`⛔️ main run error => ${e}`);
     $.notifyMsg.push(`❌ 任务执行异常: ${e.message || e}`);
-    // 不重新抛出异常，确保后面的通知和Bark推送能正常执行
+    // 不重新抛出异常，确保后面的通知能正常执行
   }
 }
 
@@ -239,7 +186,6 @@ class UserInfo {
     this.userId = String(user.userId || "").trim();
     this.userName = user.userName;
     this.userAgent = user.userAgent;
-    this.barkKey = user.barkKey || '';
     this.ckStatus = true;
     //请求封装
     this.baseUrl = ``;
