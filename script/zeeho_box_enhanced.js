@@ -34,12 +34,12 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.3.0
+// 版本: v2.3.1
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.3.0";
+const SCRIPT_VERSION = "v2.3.1";
 console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04 去除Bark拦截)`);
 
 // ========== 自动捕获 appId/appSecret ==========
@@ -1301,6 +1301,10 @@ function renderConfig(accounts, cfg) {
       <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
       </div>
+      <div class="form-item" style="margin-top:8px"><label>Bark API（签到结果推送，可选）</label>
+        <input type="text" id="acc_bark_${idx}" value="${a.barkKey || ''}" placeholder="你的Bark Key，如 8hLxWX4paYMDKrmtNj9PqZ" style="font-family:monospace;font-size:12px">
+        <div style="font-size:11px;color:#94A3B8;margin-top:4px">填写后，该账号每日签到结果将独立推送到此Bark。不填则不推送。</div>
+      </div>
     </div>`).join('');
 
   return `<!DOCTYPE html>
@@ -1449,7 +1453,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="refreshUserId('+idx+')" id="refresh_btn_'+idx+'">获取ID</button><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="refreshUserId('+idx+')" id="refresh_btn_'+idx+'">获取ID</button><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div><div class="form-item" style="margin-top:8px"><label>Bark API（签到结果推送，可选）</label><input type="text" id="acc_bark_'+idx+'" placeholder="你的Bark Key" style="font-family:monospace;font-size:12px"><div style="font-size:11px;color:#94A3B8;margin-top:4px">填写后，该账号每日签到结果将独立推送到此Bark。</div></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1491,8 +1495,9 @@ function saveAccounts() {
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
+    var bark = document.getElementById('acc_bark_'+idx);
     if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), barkKey: bark ? bark.value.trim() : '', userAgent: '' });
     }
   });
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
