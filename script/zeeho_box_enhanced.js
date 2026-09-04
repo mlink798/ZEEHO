@@ -34,12 +34,12 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box, api.day.app
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.2.2
+// 版本: v2.2.3
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.2.2";
+const SCRIPT_VERSION = "v2.2.3";
 console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-04)`);
 
 // ========== 自动捕获 appId/appSecret ==========
@@ -261,6 +261,11 @@ const CK_DATA = "zeeho_data";
 const CK_LOGS = "zeeho_logs";
 
 // ========== 默认配置 ==========
+const DEFAULT_CONFIG = {
+  app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
+  h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" },
+  community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true }
+};
 
 // ========== 版本信息 ==========
 // ========== 配置读写 ==========
