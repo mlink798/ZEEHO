@@ -1864,6 +1864,7 @@ function sendResp(status, headers, body) {
   if (path === "/config") {
     const cfg = getConfig();
     const accounts = getAccounts();
+    const html = renderConfig(accounts, cfg);
     sendResp(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }, html);
     return;
   }
