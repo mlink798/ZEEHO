@@ -2,7 +2,7 @@
 #!name=极核 ZEEHO 每日签到
 #!desc=极核打开我的页面自动捕获 user_id/Authorization，每日定时自动签到+盲盒+社区互动任务，多账号支持。仅供个人学习使用。
 #!author=lucky
-#!version=2.4.4
+#!version=2.4.1
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
 [Script]
@@ -673,46 +673,58 @@ function sha1(msg) {
   return (cvt_hex(H0) + cvt_hex(H1) + cvt_hex(H2) + cvt_hex(H3) + cvt_hex(H4)).toLowerCase();
 }
 
-// ==================== 签名函数（完全照搬原始脚本逻辑，这是能正常工作的关键） ====================
-// H5端：query + param + secret
-// App端：bodyStr + param + secret（不加query，query由Request函数里重算签名时处理）
-// nonce：h5用uuid，app用timestamp+随机16字符
-function getSign(type, params = {}, body = '') {
-  // 配置优先级：看板配置页(zeeho_config) > 默认值
-  let appConfig = {
-    appId: type === "h5" ? "Sw5F9uJi" : "S7qPWPU1",
-    appSecret: type === "h5" ? "46870a8f678a09109468f5b0168818b91c292845" : "c5e0da7f4da28df805694ec3dd1fc6792e9df99d"
-  }
-  // 从看板配置页保存的 zeeho_config 读取（优先级最高）
+// ==================== 签名函数（对齐Android源码SignUtil.java） ====================
+// 签名公式：md5(sha1(querySorted + bodyStr(DELETE不加) + appId=...&nonce=...&timestamp=... + appSecret))
+// App端：query + body + param + secret
+// H5端：query + param + secret（不加body）
+// nonce：app端 = timestamp + 随机16字符；h5端 = uuid
+function getSign(type, params = {}, body = "", method = "GET") {
+  const APP_ID = "S7qPWPU1";
+  const APP_SECRET = "c5e0da7f4da28df805694ec3dd1fc6792e9df99d";
+
+  // 从面板配置读取（优先级最高）
+  let appId = APP_ID;
+  let appSecret = APP_SECRET;
   try {
     const cfgRaw = $.getdata("zeeho_config");
     if (cfgRaw) {
       const cfg = JSON.parse(cfgRaw);
       const c = cfg[type] || cfg.app;
-      if (c && c.appId) appConfig.appId = c.appId;
-      if (c && c.appSecret) appConfig.appSecret = c.appSecret;
+      if (c?.appId) appId = c.appId;
+      if (c?.appSecret) appSecret = c.appSecret;
     }
-  } catch(e) {}
+  } catch (e) { /* 配置读取失败用默认值 */ }
 
-  // query不排序、不过滤null，完全照搬原始脚本
-  const query = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null).sort().map(key => `${key}=${params[key]}`).join('&')
-  const timestamp = new Date().getTime()
-  // nonce：h5用uuid，app用timestamp+随机16字符
-  const nonce = getUuid()
-  const param = `appId=${appConfig.appId}&nonce=${nonce}&timestamp=${timestamp}`
-  const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''
-  // 【关键！】H5端 = query + param + secret；App端 = bodyStr + param + secret（不加query！）
-  // App端的query会在Request函数里通过重算签名来处理（无body时用query）
-  const signature = type === "h5" ? `${query}${param}${appConfig.appSecret}` : `${bodyStr}${param}${appConfig.appSecret}`
-  const sign = md5(sha1(signature), 32).toString()
+  // 构建query字符串（key字典序排序，k=v用&拼接，不做URL encode，跳过null）
+  const query = Object.keys(params)
+    .filter(k => params[k] !== undefined && params[k] !== null)
+    .sort()
+    .map(key => `${key}=${params[key]}`)
+    .join("&");
+
+  const timestamp = new Date().getTime();
+  // nonce：app端 = timestamp + 随机16字符；h5端 = uuid
+  const nonce = type === "h5" ? getUuid() : (timestamp + randomChars(16));
+  const param = `appId=${appId}&nonce=${nonce}&timestamp=${timestamp}`;
+
+  // bodyStr：DELETE方法不加body
+  const bodyStr = (method.toUpperCase() === "DELETE" || !body) ? "" : (typeof body === "string" ? body : JSON.stringify(body));
+
+  // 拼接签名字符串
+  let sig = query;
+  if (type !== "h5") sig += bodyStr; // App端加body，H5端不加
+  sig += param + appSecret;
+
+  const sign = md5(sha1(sig));
+
   return {
-    'cfmoto-x-param': param,
-    'cfmoto-x-sign': sign,
-    'cfmoto-x-sign-type': '0',
-    'timestamp': String(timestamp),
-    'nonce': nonce,
-    'signature': sign
-  }
+    "cfmoto-x-param": param,
+    "cfmoto-x-sign": sign,
+    "cfmoto-x-sign-type": "0",
+    "timestamp": String(timestamp),
+    "nonce": nonce,
+    "signature": sign
+  };
 }
 
 // ==================== HTTP请求封装 ====================
@@ -723,9 +735,6 @@ async function Request(o) {
     let { url: u, type, headers = {}, body: b, params, dataType = "form", resultType = "data" } = o;
     const method = type ? type?.toLowerCase() : ("body" in o ? "post" : "get");
     const query = params ? $.queryStr(params) : "";
-    // 【关键】提取URL中已有的query参数，用于App端无body时的签名重算
-    const urlQuery = u.includes('?') ? u.split('?').slice(1).join('?') : '';
-    const signQuery = [urlQuery, query].filter(Boolean).join('&');
     const url = u.concat(query ? (u.includes("?") ? "&" : "?") + query : "");
     const timeout = o.timeout ? ($.isSurge() ? o.timeout / 1e3 : o.timeout) : 15000;
 
@@ -734,19 +743,6 @@ async function Request(o) {
     const body = hasBody ? (dataType == "form" ? $.queryStr(b) : $.toStr(b)) : "";
     if (method !== "get" && !hasBody) headers["Content-Length"] = "0";
     if (hasBody && body) headers["Content-Length"] = String(body.length);
-
-    // 【关键！】App端签名重算：有body用body，无body用query
-    // 这是原始脚本能正常工作的核心逻辑，getSign里App端只算了body的签名，
-    // 无body的GET/DELETE请求需要在这里用query重算签名
-    if (headers['cfmoto-x-param'] && headers['cfmoto-x-param'].includes('appId=S7qPWPU1')) {
-      const signPayload = body || signQuery;
-      if (signPayload) {
-        const signature = `${signPayload}${headers['cfmoto-x-param']}c5e0da7f4da28df805694ec3dd1fc6792e9df99d`;
-        const sign = md5(sha1(signature), 32).toString();
-        headers['cfmoto-x-sign'] = sign;
-        headers['signature'] = sign;
-      }
-    }
 
     // $.http.get/post 返回Promise，内部调用Env实例的get/post（callback风格）
     const httpEntry = method === "get" ? "get" : "post";
