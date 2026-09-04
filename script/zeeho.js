@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.5
+#!version=2.4.6
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -124,10 +124,41 @@ async function main() {
 
         // 汇总到总通知
         $.notifyMsg.push(`「${user.userName}」积分: ${oldScore}+${gain}, 累签: ${count}天`);
+        // 写入运行日志（面板读取此条显示今日准确得分）
+        const _now = new Date();
+        const _today = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
+        addSigninLog({
+          time: _now.toLocaleString("zh-CN", { hour12: false }),
+          date: _today,
+          userName: user.userName,
+          userId: user.userId,
+          success: true,
+          totalGain: gain,
+          signinScore: signScore,
+          blindBoxScore: blindScore,
+          interactScore: interactGain,
+          continueDays: count,
+          error: null,
+          steps: [`签到 +${signScore}`, `盲盒 +${blindScore}`, `互动 +${interactGain}`, `连签 ${count}天`]
+        });
         $.successCount++;
       } else {
         // ck 失效
         $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: ck失效或请求异常`);
+        const _n2 = new Date();
+        const _d2 = _n2.getFullYear() + '-' + String(_n2.getMonth()+1).padStart(2,'0') + '-' + String(_n2.getDate()).padStart(2,'0');
+        addSigninLog({
+          time: _n2.toLocaleString("zh-CN", { hour12: false }),
+          date: _d2,
+          userName: user.userName || ('账号' + user.index),
+          userId: user.userId,
+          success: false,
+          totalGain: 0,
+          signinScore: 0, blindBoxScore: 0, interactScore: 0,
+          continueDays: 0,
+          error: "ck失效或请求异常",
+          steps: ["执行失败: ck失效或请求异常"]
+        });
         $.failCount++;
       }
     }
@@ -660,6 +691,20 @@ async function Request(o) {
     return null;
   }
 };
+// ========== 运行日志（供面板读取今日得分） ==========
+function addSigninLog(entry) {
+  try {
+    const raw = $.getdata("zeeho_logs");
+    let logs = [];
+    if (raw) {
+      try { logs = JSON.parse(raw); } catch(e) { logs = []; }
+    }
+    if (!Array.isArray(logs)) logs = [];
+    logs.unshift(entry);
+    if (logs.length > 50) logs.length = 50;
+    $.setdata(JSON.stringify(logs), "zeeho_logs");
+  } catch(e) {}
+}
 //生成随机数
 function randomInt(n, r) {
   return Math.round(Math.random() * (r - n) + n)
