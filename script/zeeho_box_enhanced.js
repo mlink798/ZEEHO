@@ -36,13 +36,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.0
+// 版本: v2.5.1
 // 更新日期: 2026-09-04
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.0";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-05 新增车辆远程控制：寻车/鸣笛/开坐垫/云端开关锁)`);
+const SCRIPT_VERSION = "v2.5.1";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-05 v2.5.1 修复控制按钮转义导致看板脚本崩溃)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -1498,7 +1498,7 @@ function closeVehicleModal() {
 function vehicleCtrl(userId, action, btn) {
   var names = { find:'短按寻车（车辆闪灯）', loudFind:'鸣笛闪灯（高声寻车）', cushion:'打开坐垫（坐垫会弹起）', unlock:'云端开锁', lock:'云端关锁' };
   var name = names[action] || action;
-  if (!confirm('确定执行【' + name + '】吗？\n该指令会通过 4G 网络真实控制你的车辆！')) return;
+  if (!confirm('确定执行【' + name + '】吗？\\n该指令会通过 4G 网络真实控制你的车辆！')) return;
   var old = btn.textContent;
   btn.disabled = true; btn.textContent = '···';
   showToast('指令下发中…');
