@@ -86,7 +86,7 @@
 <div class="container">
   <div class="header">
     <h1>⚡ 极核 ZEEHO 配置客户端</h1>
-    <p>验证 · 上传 · 教程 <span style="font-size:10px;color:#10b981;font-weight:600;">v2.1.5</span></p>
+    <p>验证 · 上传 · 教程 <span style="font-size:10px;color:#10b981;font-weight:600;">v2.2.0</span></p>
   </div>
 
   <div class="tabs">
@@ -387,18 +387,39 @@ async function validateToken(){
       window._validatedContent=getCurrentContentHash();
       showResult('up_result','success',`✅ Token验证通过<br>昵称：${nickName}<br>用户ID：${returnedId}（服务端自动获取）<br>「Bark 上传」已解锁<br><br>💡 如需修改内容，请重新验证`);
       document.getElementById('uploadBtn').disabled=false;
+      document.getElementById('barkUploadBtn').disabled=false;
     }else{
       // 联网返回业务错误：Token确实无效
       showResult('up_result','error','❌ Token无效或已过期：'+(res.message||res.msg||'未知错误'));
     }
   }catch(e){
     // 网络/CORS都失败：格式已通过，允许上传但给出提示
-    showResult('up_result','info',`⚠️ 格式校验通过，但联网验证失败（${e.message}）<br>可能是网络/CORS限制，不影响上传，服务端会再次校验。<br><br><button class="btn btn-primary" style="width:auto;padding:8px 16px;" onclick="document.getElementById('uploadBtn').disabled=false;showResult('up_result','success','✅ 格式校验通过，已解锁上传（服务端会再次校验）')">仍要上传（解锁）</button>`);
+    showResult('up_result','info',`⚠️ 格式校验通过，但联网验证失败（${e.message}）<br>可能是网络/CORS限制，不影响上传，服务端会再次校验。<br><br><button class="btn btn-primary" style="width:auto;padding:8px 16px;" onclick="document.getElementById('uploadBtn').disabled=false;document.getElementById('barkUploadBtn').disabled=false;showResult('up_result','success','✅ 格式校验通过，已解锁上传（服务端会再次校验）')">仍要上传（解锁）</button>`);
   }
   btn.disabled=false;btn.textContent='① 本地验证';
 }
 
-// ====== ② Bark 上传 ======
+// ====== ② 直接保存到Loon（通过zeeho.box，最可靠）======
+function directSave(){
+  const name=document.getElementById('up_name').value.trim();
+  const token=cleanToken(document.getElementById('up_token').value);
+  if(!name||!token){showResult('up_result','error','❌ 请填写账号名称和Token');return;}
+  const barkInput=document.getElementById('up_barkKey').value.trim();
+  let barkKey=barkInput;
+  const bm=barkInput.match(/api\.day\.app\/([a-zA-Z0-9]+)/);
+  if(bm) barkKey=bm[1];
+  else if(barkInput.includes('/')) barkKey=barkInput.split('/').filter(Boolean).pop()||'';
+  barkKey=barkKey.replace(/[^a-zA-Z0-9]/g,'');
+  // 构造 zeeho.box 快速保存链接，Loon拦截后自动获取用户ID并保存
+  const saveUrl='http://zeeho.box/api/quick-save?name='+encodeURIComponent(name)+'&token='+encodeURIComponent(token)+(barkKey?'&barkKey='+encodeURIComponent(barkKey):'');
+  showResult('up_result','info','⏳ 正在跳转到 Loon 保存...<br>如果没有自动跳转，<a href="'+saveUrl+'" style="color:#0891B2;font-weight:700">点这里手动打开</a>');
+  // 同时解锁Bark备用按钮
+  document.getElementById('barkUploadBtn').disabled=false;
+  // 跳转
+  window.location.href=saveUrl;
+}
+
+// ====== ② 备用：Bark 上传 ======
 async function uploadConfig(){
   const name=document.getElementById('up_name').value.trim();
   const token=cleanToken(document.getElementById('up_token').value);
@@ -414,7 +435,10 @@ async function uploadConfig(){
   const btn=document.getElementById('uploadBtn');
   btn.disabled=true;btn.textContent='上传中...';
   try{
-    const uploadKey=getBarkKey(); const barkUrl=`https://api.day.app/${uploadKey}/${encodeURIComponent('极核配置上传')}?name=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}${barkKey?'&barkKey='+encodeURIComponent(barkKey):''}`;
+    const uploadKey=getBarkKey();
+    // Bark通知标题：优先用昵称（验证后自动填充），没设置就用账号名称
+    const barkTitle = name || '极核配置上传';
+    const barkUrl=`https://api.day.app/${uploadKey}/${encodeURIComponent(barkTitle)}?name=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}${barkKey?'&barkKey='+encodeURIComponent(barkKey):''}`;
     const res=await fetch(barkUrl);
     const data=await res.json();
     if(data.code===200){
