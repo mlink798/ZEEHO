@@ -384,7 +384,7 @@ class UserInfo {
 
   } catch (e) {
 
-    this.ckStatus = false;
+    // 查询签到记录失败不影响Token状态
     $.log(`⛔️ 查询签到记录失败! ${e}`);
 
   }
@@ -420,7 +420,7 @@ class UserInfo {
         return 0;
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 任务失败不影响Token状态
       $.log(`⛔️ 盲盒抽奖发起失败! ${e}`);
       return 0;
     }
@@ -447,7 +447,7 @@ class UserInfo {
         $.log(`\u26d4\ufe0f \u521b\u5efa\u52a8\u6001\u5931\u8d25: ${res?.message}`);
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`⛔️ 创建动态失败! ${e}`);
     }
   }
@@ -476,7 +476,7 @@ class UserInfo {
         $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: ${res?.message}`);
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`⛔️ 获取动态列表失败! ${e}`);
     }
   }
@@ -529,7 +529,7 @@ class UserInfo {
       }
       return ok; // 用于统计互动任务积分（已完成/重复则不计分）
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`⛔️ 点赞动态失败! ${e}`);
       return false;
     }
@@ -553,7 +553,7 @@ class UserInfo {
       await this.adjustByShare();
       return ok; // 用于统计互动任务积分（已完成/重复则不计分）
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`\u26d4\ufe0f \u5206\u4eab\u52a8\u6001\u5931\u8d25: ${e}`);
       return false;
     }
@@ -574,7 +574,7 @@ class UserInfo {
         $.log(`\u26d4\ufe0f \u5206\u4eab\u79ef\u5206\u5931\u8d25: ${res?.message}`);
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`\u26d4\ufe0f \u5206\u4eab\u79ef\u5206\u5931\u8d25: ${e}`);
     }
   }
@@ -600,7 +600,7 @@ class UserInfo {
         $.log(`\u26d4\ufe0f \u8bc4\u8bba\u52a8\u6001\u5931\u8d25: ${res?.message}`);
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`\u26d4\ufe0f \u8bc4\u8bba\u52a8\u6001\u5931\u8d25: ${e}`);
     }
   }
@@ -620,7 +620,7 @@ class UserInfo {
         $.log(`\u26d4\ufe0f \u5220\u9664\u52a8\u6001\u5931\u8d25: ${res?.message}`)
       }
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`\u26d4\ufe0f \u5220\u9664\u52a8\u6001\u5931\u8d25: ${e}`);
     }
   }
@@ -641,7 +641,7 @@ class UserInfo {
       }
       return null
     } catch (e) {
-      this.ckStatus = false;
+      // 动态任务失败不影响Token状态
       $.log(`⛔️ 查询用户信息失败! ${e}`);
     }
   }
