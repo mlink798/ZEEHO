@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.6.0
+#!version=2.6.1
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.6.0
+// 版本: v2.6.1
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.6.0";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.6.0 车辆开关机状态显示：widgets/vehicleHomePage双接口提取电源/ACC/车锁字段，开锁=上电开机、锁车=下电关机，卡片与详情弹窗同步显示)`);
+const SCRIPT_VERSION = "v2.6.1";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-08 v2.6.1 修正车辆首页接口为真实vehicleHomePageV2(GET,VIN路径参数,带uniqueIdentify/phoneDeviceName)，深度递归提取电源/ACC/车锁字段，卡片与详情弹窗显示开关机状态)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -827,11 +827,33 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
   } catch(e) { return null; }
 }
 
-// 车辆首页综合数据（极核App首页用，可能包含开关机/ACC状态、车锁状态、在线状态）
+// 基于账号生成稳定的16位hex设备标识（uniqueIdentify/phoneDeviceName 参数用，服务端仅埋点不校验）
+function getDeviceIdentify(acc) {
+  const seed = String(acc.userId || acc.vinNo || "zeeho-device");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) { h = ((h << 5) - h + seed.charCodeAt(i)) | 0; }
+  return (Math.abs(h).toString(16) + "0000000000000000").slice(0, 16);
+}
+// 深度优先在嵌套对象里找第一个匹配 keys 的非空值（V2返回结构层级不确定）
+function deepPick(obj, keys, depth) {
+  if (!obj || typeof obj !== "object" || (depth || 0) > 5) return "";
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return String(obj[k]);
+  }
+  for (const k in obj) {
+    if (obj[k] && typeof obj[k] === "object") {
+      const r = deepPick(obj[k], keys, (depth || 0) + 1);
+      if (r) return r;
+    }
+  }
+  return "";
+}
+// 车辆首页综合数据 vehicleHomePageV2（极核App 3.x首页接口，GET，VIN在路径，含开关机/ACC/车锁/在线状态）
 async function fetchVehicleHomePage(acc, cfg, vinNo) {
   try {
     const token = cleanToken(acc.token);
     const signH = getSign("app", {}, '', cfg);
+    const deviceId = getDeviceIdentify(acc);
     const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json;charset=UTF-8",
@@ -839,19 +861,14 @@ async function fetchVehicleHomePage(acc, cfg, vinNo) {
       "user_id": acc.userId || "",
       ...signH
     };
-    // 先尝试 POST（body 带 vinNo），失败再尝试 GET（query 带 vinNo）
-    let res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleHomePage`, headers, JSON.stringify({ vinNo: vinNo }));
-    if (!(res && (res.code == "10000" || res.code === 10000) && res.data)) {
-      res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleHomePage?vinNo=${encodeURIComponent(vinNo)}`, headers);
-    }
+    const url = `https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleHomePageV2/${encodeURIComponent(vinNo)}?uniqueIdentify=${deviceId}&phoneDeviceName=ios_${deviceId}`;
+    const res = await httpGet(url, headers);
     if (res && (res.code == "10000" || res.code === 10000) && res.data) {
       const d = res.data;
-      // 车辆数据可能嵌套在 data.vehicleInfo / data.vehicle / data.vehicleData 里
-      const v = d.vehicleInfo || d.vehicle || d.vehicleData || d;
       return {
-        powerStatus: String(v.accStatus || v.powerStatus || v.vehicleStatus || v.ignitionStatus || v.powerMode || v.accState || v.powerState || v.vehicleState || v.engineStatus || v.isPowerOn || v.powerOn || "").trim(),
-        lockState: String(v.lockState || v.lockStatus || v.vehicleLockState || v.carLockState || v.doorLockState || v.lockFlag || v.isLocked || v.locked || v.centralLockingStatus || "").trim(),
-        online: String(v.onlineStatus || v.online || v.isOnline || v.vehicleOnline || "").trim()
+        powerStatus: deepPick(d, ["accStatus","powerStatus","vehicleStatus","ignitionStatus","powerMode","accState","powerState","vehicleState","engineStatus","isPowerOn","powerOn","acc"]).trim(),
+        lockState: deepPick(d, ["lockState","lockStatus","vehicleLockState","carLockState","doorLockState","lockFlag","isLocked","locked","centralLockingStatus","headLockState"]).trim(),
+        online: deepPick(d, ["onlineStatus","online","isOnline","vehicleOnline"]).trim()
       };
     }
     return null;
