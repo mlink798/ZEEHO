@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.6
+#!version=2.4.7
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -241,7 +241,8 @@ class UserInfo {
         let infoRes2 = await this.fetch(infoOpts);
         const te = (infoRes2?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
         const point = te?.integralScore ? Number(te.integralScore) : 0;
-        $.log(`✅ 签到任务: 已完成 +${point}积分`);
+        // 签到动作已成功；回查瞬时可能为0(服务端延迟)，此时不显示"+0积分"，统一显示今日已签到，得分以后续签到记录回查(prize)为准
+        $.log(point > 0 ? `✅ 签到任务: 签到成功 +${point}积分` : `✅ 签到任务: 今日已签到`);
         return point;
       } else {
         $.log(`⛔️ 签到任务: ${res?.message}`);
