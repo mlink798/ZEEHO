@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.5.6
+#!version=2.5.7
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.6
+// 版本: v2.5.7
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.6";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.6 账号管理支持每账号独立Bark(签到成功推送)；保存账号时自动剥离Bearer前缀仅保留Token)`);
+const SCRIPT_VERSION = "v2.5.7";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.7 Bark Key保存时清洗(官方完整链接只留Key)；账号配置经zeeho_data同步给签到脚本，定时签到也按账号Bark推送)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -205,6 +205,12 @@ function toQuery(p = {}) {
 function cleanToken(t) {
   return String(t || "").replace(/^[bB]earer\s+/i, "").trim();
 }
+// 清洗 Bark Key：官方完整链接 https://api.day.app/xxx 只保留 xxx；纯Key原样；自建服务器完整地址保留
+function cleanBarkKey(k) {
+  let s = String(k || "").trim().replace(/\/+$/, "");
+  s = s.replace(/^https?:\/\/api\.day\.app\//i, "");
+  return s.trim();
+}
 // 车架号脱敏：保留前3位+后4位，中间打码（默认不展示完整VIN，点击按钮才显示）
 function maskVin(v) {
   const s = String(v || "");
@@ -264,7 +270,7 @@ function httpGet(url, headers) {
 // barkKey 支持两种填法：①只填 Bark App 内的 Key（走官方 https://api.day.app）；②自建服务器完整地址 https://域名/Key
 function barkPush(barkKey, title, body) {
   try {
-    const k = String(barkKey || "").trim().replace(/\/+$/, "");
+    const k = cleanBarkKey(barkKey);
     if (!k) return Promise.resolve({ skipped: true });
     let base = "https://api.day.app";
     let key = k;
@@ -2087,7 +2093,10 @@ function sendResp(status, headers, body) {
     const rawList = Array.isArray(body.accounts) ? body.accounts : [];
     // 存盘前统一剥离 Bearer 前缀，仅保留 Token 本体；其余字段（含每账号 barkKey）原样保留
     const list = rawList.map(function(a) {
-      return Object.assign({}, a, { token: cleanToken(a.token || "") });
+      return Object.assign({}, a, {
+        token: cleanToken(a.token || ""),
+        barkKey: cleanBarkKey(a.barkKey || "")
+      });
     });
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
