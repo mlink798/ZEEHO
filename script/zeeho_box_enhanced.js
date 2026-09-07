@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.5.7
+#!version=2.5.8
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.7
+// 版本: v2.5.8
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.7";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.7 Bark Key保存时清洗(官方完整链接只留Key)；账号配置经zeeho_data同步给签到脚本，定时签到也按账号Bark推送)`);
+const SCRIPT_VERSION = "v2.5.8";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.8 修复多账号连签“请稍后”限流(退避重试3次+回查)；社区动态只操作本人帖，杜绝“他人创建的帖子不可删除”)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -343,14 +343,31 @@ async function runSigninForAccount(acc, cfg) {
       if (todayEntry && (todayEntry.signStatue == 3 || todayEntry.signStatue == 5)) {
         result.steps.push("今日已签到");
       } else {
-        const signRes = await httpPost(`https://h5.zeehoev.com/cfmotoservermine/signin`, { ...baseHeaders, ...getSign("h5", {}, '', cfg) }, {});
+        // 多账号连签易触发“请稍后/操作频繁”限流，退避后最多重试3次
+        let signRes = null, signMsg = "未知";
+        for (let at = 1; at <= 3; at++) {
+          signRes = await httpPost(`https://h5.zeehoev.com/cfmotoservermine/signin`, { ...baseHeaders, ...getSign("h5", {}, '', cfg) }, {});
+          if (signRes?.code == "10000") break;
+          signMsg = signRes?.message || "未知";
+          if (/请稍|稍后|稍候|频繁|繁忙|重试/.test(signMsg) && at < 3) {
+            await new Promise(r => setTimeout(r, (at + 1) * 2000));
+            continue;
+          }
+          break;
+        }
         if (signRes?.code == "10000") {
           const infoRes2 = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...getSign("h5", { month }, '', cfg) });
           const te = (infoRes2?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
           result.signinScore = te ? (Number(te.integralScore) || 0) : 0;
           result.steps.push(`签到成功 +${result.signinScore}`);
         } else {
-          result.steps.push(`签到失败: ${signRes?.message || "未知"}`);
+          // 重试后仍未成功：回查今日是否其实已签上
+          try {
+            const chk = await httpGet(`https://h5.zeehoev.com/cfmotoservermine/signin/info?month=${month}`, { ...baseHeaders, ...getSign("h5", { month }, '', cfg) });
+            const ce = (chk?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+            if (ce && (ce.signStatue == 3 || ce.signStatue == 5)) result.steps.push("今日已签到");
+            else result.steps.push(`签到失败: ${signMsg}`);
+          } catch(e) { result.steps.push(`签到失败: ${signMsg}`); }
         }
       }
     } catch(e) { result.steps.push(`签到异常: ${e}`); }
@@ -391,8 +408,11 @@ async function runSigninForAccount(acc, cfg) {
     if (!postId) {
       try {
         const listRes = await httpGet(`https://tapi.zeehoev.com/v1.0/social/cfmotoserversocial/community/mineArticleInfo?userId=${userId}&page=1&pageSize=10`, { ...baseHeaders, ...getSign("app", {}, '', cfg) });
-        const list = Array.isArray(listRes?.data) ? listRes.data : (listRes?.data?.records || listRes?.data?.list || []);
-        postId = getPostIdFromData(list[0] || listRes?.data);
+        const rawList = Array.isArray(listRes?.data) ? listRes.data : (listRes?.data?.records || listRes?.data?.list || []);
+        const list = Array.isArray(rawList) ? rawList : [];
+        // mineArticleInfo 只返回本人动态，优先按 userId 命中本人，杜绝误取他人帖导致“不可删除”
+        const mine = list.find(it => String(it.userId || it.createBy || it.uid || "") === String(userId));
+        postId = getPostIdFromData(mine || list[0] || listRes?.data);
       } catch(e) {}
     }
     if (postId) {
