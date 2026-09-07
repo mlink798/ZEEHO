@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.6.1
+#!version=2.6.2
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.6.1
+// 版本: v2.6.2
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.6.1";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-08 v2.6.1 修正车辆首页接口为真实vehicleHomePageV2(GET,VIN路径参数,带uniqueIdentify/phoneDeviceName)，深度递归提取电源/ACC/车锁字段，卡片与详情弹窗显示开关机状态)`);
+const SCRIPT_VERSION = "v2.6.2";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-08 v2.6.2 依据真实HAR定位开关机字段：iotProperties.VehicleLock_S整车锁定状态(0未锁=开机/1锁定=关机)，vehicleHomePageV2提取，详情补车辆在线状态)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -848,6 +848,19 @@ function deepPick(obj, keys, depth) {
   }
   return "";
 }
+// 从 iotProperties 数组里按 identify 提取上报值（如 VehicleLock_S 整车锁定状态、HeadLockState 龙头锁）
+function pickIotProp(d, identify) {
+  const arr = d && d.iotProperties;
+  if (Array.isArray(arr)) {
+    const key = String(identify).toLowerCase();
+    for (const it of arr) {
+      if (it && String(it.identify || "").toLowerCase() === key && it.value !== null && it.value !== undefined && it.value !== "") {
+        return String(it.value);
+      }
+    }
+  }
+  return "";
+}
 // 车辆首页综合数据 vehicleHomePageV2（极核App 3.x首页接口，GET，VIN在路径，含开关机/ACC/车锁/在线状态）
 async function fetchVehicleHomePage(acc, cfg, vinNo) {
   try {
@@ -865,10 +878,15 @@ async function fetchVehicleHomePage(acc, cfg, vinNo) {
     const res = await httpGet(url, headers);
     if (res && (res.code == "10000" || res.code === 10000) && res.data) {
       const d = res.data;
+      // 整车锁定状态 VehicleLock_S：0=未锁(解锁即上电=开机)，1=锁定(锁车即下电=关机)；其次用顶层龙头锁 headLockState
+      const vehicleLock = pickIotProp(d, "VehicleLock_S");
+      const headLockIot = pickIotProp(d, "HeadLockState");
+      const topLock = String(d.lockState || d.lockStatus || d.vehicleLockState || d.headLockState || headLockIot || "").trim();
       return {
         powerStatus: deepPick(d, ["accStatus","powerStatus","vehicleStatus","ignitionStatus","powerMode","accState","powerState","vehicleState","engineStatus","isPowerOn","powerOn","acc"]).trim(),
-        lockState: deepPick(d, ["lockState","lockStatus","vehicleLockState","carLockState","doorLockState","lockFlag","isLocked","locked","centralLockingStatus","headLockState"]).trim(),
-        online: deepPick(d, ["onlineStatus","online","isOnline","vehicleOnline"]).trim()
+        lockState: vehicleLock || topLock,
+        online: String(d.onlineStatus || d.rideState || d.online || "").trim(),
+        rideState: String(d.rideState || "").trim()
       };
     }
     return null;
@@ -986,7 +1004,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "", powerStatus: "", lockState: "", online: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "", powerStatus: "", lockState: "", online: "", rideState: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -1019,6 +1037,7 @@ async function fetchVehicleInfo(acc, cfg) {
       if (homePage.powerStatus) result.powerStatus = homePage.powerStatus;
       if (homePage.lockState) result.lockState = homePage.lockState;
       if (homePage.online) result.online = homePage.online;
+      if (homePage.rideState) result.rideState = homePage.rideState;
     }
     if (tire) {
       result.frontPressure = tire.frontPressure;
@@ -1670,6 +1689,7 @@ function showVehicleDetail(idx) {
     else if (lockOffVals.indexOf(l) >= 0) { powerText = "已关机"; powerColor = "#64748B"; }
   }
   rows.push('<div class="v-detail-row"><span class="v-detail-label">电源状态</span><span class="v-detail-val" style="color:'+powerColor+'">'+powerText+'</span></div>');
+  if (v.rideState || v.online) rows.push('<div class="v-detail-row"><span class="v-detail-label">车辆状态</span><span class="v-detail-val">'+(v.rideState || v.online)+'</span></div>');
   rows.push('<div class="v-detail-row"><span class="v-detail-label">电量SOC</span><span class="v-detail-val" style="font-weight:700;color:'+(v.batteryPercent<=20?'#EF4444':v.batteryPercent<=50?'#F59E0B':'#0891B2')+'">'+v.batteryPercent+'%</span></div>');
   if (v.voltage) rows.push('<div class="v-detail-row"><span class="v-detail-label">电压</span><span class="v-detail-val">'+v.voltage.toFixed(1)+'V</span></div>');
   if (v.current) rows.push('<div class="v-detail-row"><span class="v-detail-label">电流</span><span class="v-detail-val">'+v.current.toFixed(1)+'A</span></div>');
