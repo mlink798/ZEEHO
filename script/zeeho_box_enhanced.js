@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.5.5
+#!version=2.5.6
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.5
+// 版本: v2.5.6
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.5";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.5 头部补#!version，Loon插件详情页显示版本号；页面footer/配置页版本同步)`);
+const SCRIPT_VERSION = "v2.5.6";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.6 账号管理支持每账号独立Bark(签到成功推送)；保存账号时自动剥离Bearer前缀仅保留Token)`);
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -258,6 +258,25 @@ function httpGet(url, headers) {
       });
     }
   });
+}
+
+// ========== 单账号 Bark 推送（仅该账号签到成功后通知） ==========
+// barkKey 支持两种填法：①只填 Bark App 内的 Key（走官方 https://api.day.app）；②自建服务器完整地址 https://域名/Key
+function barkPush(barkKey, title, body) {
+  try {
+    const k = String(barkKey || "").trim().replace(/\/+$/, "");
+    if (!k) return Promise.resolve({ skipped: true });
+    let base = "https://api.day.app";
+    let key = k;
+    const m = k.match(/^(https?:\/\/[^/]+)\/(.+)$/i);
+    if (m) { base = m[1]; key = m[2]; }   // 自建服务器
+    key = key.replace(/^\/+/, "");
+    const u = base + "/" + encodeURIComponent(key)
+      + "/" + encodeURIComponent(title)
+      + "/" + encodeURIComponent(body)
+      + "?group=ZEEHO&sound=birdsong";
+    return httpGet(u, {});
+  } catch(e) { return Promise.resolve({ error: String(e) }); }
 }
 
 
@@ -1581,8 +1600,11 @@ function renderConfig(accounts, cfg) {
         <div class="form-item"><label>昵称</label><input type="text" id="acc_name_${idx}" value="${a.userName || ''}" placeholder="lucky798"></div>
         <div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_${idx}" value="${a.userId || ''}" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div>
       </div>
-      <div class="form-item" style="margin-top:8px"><label>Authorization Token（Bearer 格式，可不带 Bearer 前缀）</label>
+      <div class="form-item" style="margin-top:8px"><label>Authorization Token（直接粘贴即可，会自动去掉 Bearer 前缀）</label>
         <input type="text" id="acc_token_${idx}" value="${a.token || ''}" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px">
+      </div>
+      <div class="form-item" style="margin-top:8px"><label>Bark 通知 Key（选填，仅该账号签到成功后推送，留空不推）</label>
+        <input type="text" id="acc_bark_${idx}" value="${a.barkKey || ''}" placeholder="Bark App 内的 Key，或自建服务器 https://域名/Key" style="font-family:monospace;font-size:12px">
       </div>
 
     </div>`).join('');
@@ -1685,7 +1707,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     </div>
     <div class="panel-body">
       <div id="accList">${accRows || '<div style="text-align:center;padding:20px;color:#94A3B8;font-size:13px">暂无账号，点击上方「添加账号」</div>'}</div>
-      <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值，可带或不带 <code>Bearer</code> 前缀。<br>用户ID获取：打开极核App-我的，抓包 <code>/setting/{userId}</code> 接口，响应体 <code>data.id</code> 即为用户ID。</div>
+      <div class="hint">Token 格式：直接粘贴抓包得到的 Authorization 值即可，即使带了 <code>Bearer </code> 前缀，保存时也会自动去掉、只保留后面的 Token。<br>每账号可单独填 Bark Key：该账号签到成功后推送一条通知（标题含昵称、内容含得分明细），留空则该账号不推送；支持官方 Key 或自建服务器地址。<br>用户ID获取：打开极核App-我的，抓包 <code>/setting/{userId}</code> 接口，响应体 <code>data.id</code> 即为用户ID。</div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveAccounts()">保存极核账号</button>
       </div>
@@ -1735,7 +1757,7 @@ var accCount = ${accounts.length};
 function addAccount() {
   accCount++;
   var idx = accCount - 1;
-  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="refreshUserId('+idx+')" id="refresh_btn_'+idx+'">获取ID</button><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div></div>';
+  var html = '<div class="acc-row" data-idx="'+idx+'"><div class="acc-row-head"><span class="acc-row-title">账号 '+accCount+'（新）</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="refreshUserId('+idx+')" id="refresh_btn_'+idx+'">获取ID</button><button class="btn btn-sm btn-danger" onclick="deleteAccount('+idx+')">删除</button></div></div><div class="form-grid"><div class="form-item"><label>昵称</label><input type="text" id="acc_name_'+idx+'" placeholder="lucky798"></div><div class="form-item"><label>用户ID</label><input type="text" id="acc_uid_'+idx+'" placeholder="20251009..." style="font-family:monospace;font-size:12px"></div></div><div class="form-item" style="margin-top:8px"><label>Authorization Token（自动去掉 Bearer 前缀）</label><input type="text" id="acc_token_'+idx+'" placeholder="a74779c7-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:12px"></div><div class="form-item" style="margin-top:8px"><label>Bark 通知 Key（选填）</label><input type="text" id="acc_bark_'+idx+'" placeholder="Bark Key 或自建 https://域名/Key，留空不推" style="font-family:monospace;font-size:12px"></div></div>';
   var list = document.getElementById('accList');
   if (list.querySelector('.acc-row') || list.querySelector('[style*="text-align"]')) {
     list.insertAdjacentHTML('beforeend', html);
@@ -1777,8 +1799,9 @@ function saveAccounts() {
     var name = document.getElementById('acc_name_'+idx);
     var uid = document.getElementById('acc_uid_'+idx);
     var token = document.getElementById('acc_token_'+idx);
+    var bark = document.getElementById('acc_bark_'+idx);
     if (token && token.value.trim()) {
-      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), userAgent: '' });
+      list.push({ userName: name ? name.value : '', userId: uid ? uid.value : '', token: token.value.trim(), barkKey: bark ? bark.value.trim() : '', userAgent: '' });
     }
   });
   fetch('/api/save-accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accounts: list}) })
@@ -2061,7 +2084,11 @@ function sendResp(status, headers, body) {
   // API: 保存账号
   if (method === "POST" && path === "/api/save-accounts") {
     const body = parseBody($request);
-    const list = Array.isArray(body.accounts) ? body.accounts : [];
+    const rawList = Array.isArray(body.accounts) ? body.accounts : [];
+    // 存盘前统一剥离 Bearer 前缀，仅保留 Token 本体；其余字段（含每账号 barkKey）原样保留
+    const list = rawList.map(function(a) {
+      return Object.assign({}, a, { token: cleanToken(a.token || "") });
+    });
     const ok = saveAccounts(list);
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: ok, count: list.length }));
     return;
@@ -2131,6 +2158,14 @@ function sendResp(status, headers, body) {
         error: r.error,
         steps: r.steps
       });
+      // 每账号独立 Bark：仅签到成功且该账号填了 Bark Key 时推送
+      if (r.success && acc.barkKey && String(acc.barkKey).trim()) {
+        try {
+          const _bt = "极核签到成功 · " + (r.userName || "");
+          const _bb = "今日获得 " + r.totalGain + " 分（签到" + r.signinScore + " / 盲盒" + r.blindBoxScore + " / 互动" + r.interactScore + "），连签 " + r.continueDays + " 天";
+          await barkPush(acc.barkKey, _bt, _bb);
+        } catch(e) {}
+      }
     }
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify({ ok: true, results: results }));
     return;
