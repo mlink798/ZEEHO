@@ -1,0 +1,97 @@
+{
+  "id": "zeeho.sub",
+  "name": "极核 ZEEHO 签到",
+  "author": "@lucky",
+  "icon": "https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png",
+  "repo": "https://github.com/mlink798/ZEEHO",
+  "apps": [
+    {
+      "id": "zeeho_signin",
+      "name": "极核每日签到（账号配置）",
+      "keys": [
+        "zeeho_data",
+        "is_debug"
+      ],
+      "author": "@lucky",
+      "icons": [
+        "https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png",
+        "https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png"
+      ],
+      "descs_html": [
+        "极核 ZEEHO 电动车 App 每日自动签到 + 盲盒抽奖 + 社区互动（发帖/点赞/评论/分享后自动删帖），多账号、每账号独立 Bark 推送，每天 07:00 自动执行。",
+        "<b>第 1 步：</b>在下方「账号列表」按模板填好账号（JSON 数组，几个账号就写几组）。",
+        "<b>第 2 步：</b>代理工具里挂好定时任务（cron 0 7 * * *）调用 zeeho.js；也可随时手动运行一次测试。",
+        "<b>第 3 步：</b>打开一次极核 App「我的」，http-response 捕获脚本会自动补全/校正 userId 与 Token。",
+        "<hr style='opacity:.3'>",
+        "<b>字段说明：</b>",
+        "· <b>userName</b>：账号备注名，随意，如「账号1」；",
+        "· <b>userId</b>：必填，纯数字，抓包或面板「获取ID」可得；",
+        "· <b>token</b>：必填，Authorization 值，<b>带不带 Bearer 都可以</b>，脚本会自动规范化；",
+        "· <b>barkKey</b>：可选，该账号签到成功后单独推送到这个 Bark Key，不填则不推送；",
+        "· <b>vinNo</b>：可选，车架号，不填脚本会自动拉取；",
+        "· <b>userAgent</b>：可选，留空用内置默认值。",
+        "<span style='color:#888'>注：本处配置与网页面板(zeeho.box)共用同一个 zeeho_data，哪边改都互通；切换代理软件需重新填一次（各软件存储相互独立）。</span>",
+        "<b>签到脚本：</b><a href=\"https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js\">zeeho.js（v2.5.0）</a>"
+      ],
+      "repo": "https://github.com/mlink798/ZEEHO/blob/main/script/zeeho.js",
+      "script": "https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho.js",
+      "settings": [
+        {
+          "id": "zeeho_data",
+          "name": "账号列表（JSON 数组，照模板改）",
+          "val": "",
+          "type": "textarea",
+          "autoGrow": true,
+          "rows": 10,
+          "desc": "几个账号就保留几组、逗号分隔；删账号直接删掉整组。注意英文引号、英文逗号，不要加注释。",
+          "placeholder": "[{\"userName\":\"账号1\",\"userId\":\"20251009000000000\",\"token\":\"粘贴Authorization，带不带Bearer都行\",\"barkKey\":\"\",\"vinNo\":\"\",\"userAgent\":\"\"},{\"userName\":\"账号2\",\"userId\":\"20250217000000000\",\"token\":\"\",\"barkKey\":\"\",\"vinNo\":\"\",\"userAgent\":\"\"}]"
+        },
+        {
+          "id": "is_debug",
+          "name": "调试日志（默认 false，排障时改 true）",
+          "val": "false",
+          "type": "text",
+          "desc": "填 true 会在代理工具日志里打印每一步请求/响应细节，正常使用保持 false。"
+        }
+      ]
+    },
+    {
+      "id": "zeeho_advanced",
+      "name": "极核高级配置 / 实时看板说明",
+      "keys": [
+        "zeeho_config"
+      ],
+      "author": "@lucky",
+      "icons": [
+        "https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png",
+        "https://raw.githubusercontent.com/mlink798/ZEEHO/main/ZEEHO.png"
+      ],
+      "descs_html": [
+        "<b>① 签名密钥（一般不用改）</b>",
+        "App 端 / H5 端 appId、appSecret 已内置在脚本里，正常使用无需填写；只有服务端换密钥、出现 permit/sign 报错时，才需要在下方覆盖。",
+        "<hr style='opacity:.3'>",
+        "<b>② 实时数据看板（BoxJS 不提供，需另装面板脚本）</b>",
+        "BoxJS 只负责「填账号配置 + 定时签到」。若要看总积分、电量续航、胎压、<b>车辆开关机状态</b>、签到热力图等实时数据，需要另外挂面板脚本 zeeho_box_enhanced.js 并用浏览器访问面板：",
+        "· Loon：http://zeeho.box（插件自带虚拟劫持）",
+        "· Shadowrocket：用配套 .module（[Host] 把 zeeho.box 指到 127.0.0.1）",
+        "· Quantumult X：http://example.com（rewrite_local）",
+        "面板与本订阅共用 zeeho_data，账号只填一处即可。",
+        "<b>面板脚本：</b><a href=\"https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js\">zeeho_box_enhanced.js（v2.6.3）</a>"
+      ],
+      "repo": "https://github.com/mlink798/ZEEHO/blob/main/script/zeeho_box_enhanced.js",
+      "script": "https://raw.githubusercontent.com/mlink798/ZEEHO/refs/heads/main/script/zeeho_box_enhanced.js",
+      "settings": [
+        {
+          "id": "zeeho_config",
+          "name": "签名密钥覆盖（留空即用内置，高级）",
+          "val": "",
+          "type": "textarea",
+          "autoGrow": true,
+          "rows": 6,
+          "desc": "留空即可。需要覆盖时按此格式：{\"app\":{\"appId\":\"S7qPWPU1\",\"appSecret\":\"...\"},\"h5\":{\"appId\":\"Sw5F9uJi\",\"appSecret\":\"...\"}}",
+          "placeholder": "{\"app\":{\"appId\":\"S7qPWPU1\",\"appSecret\":\"\"},\"h5\":{\"appId\":\"Sw5F9uJi\",\"appSecret\":\"\"}}"
+        }
+      ]
+    }
+  ]
+}
