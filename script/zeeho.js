@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.9
+#!version=2.5.0
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -26,6 +26,18 @@ hostname = tapi.zeehoev.com
 6、如果任何单位或个人认为此脚本可能涉嫌侵犯其权利，应及时通知并提供身份证明，所有权证明，我们将在收到认证文件确认后删除此脚本。
 7、所有直接或间接使用、查看此脚本的人均应该仔细阅读此声明。本人保留随时更改或补充此声明的权利。一旦您使用或复制了此脚本，即视为您已接受此免责声明。
  */
+
+// ===== QX(Quantumult X) 运行时兼容层 =====
+// QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
+if (typeof $prefs !== "undefined" && typeof $persistentStore === "undefined") {
+  globalThis.$persistentStore = {
+    read: function (k) { try { return $prefs.valueForKey(k); } catch (e) { return null; } },
+    write: function (v, k) { try { $prefs.setValueForKey(v, k); return true; } catch (e) { return false; } }
+  };
+  if (typeof $notification === "undefined") {
+    globalThis.$notification = { post: function (t, s, b, o) { try { $notify(t, s, b, o); } catch (e) {} } };
+  }
+}
 
 const $ = new Env("极核-ZEEHO");
 const ckName = "zeeho_data";
