@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.8
+#!version=2.4.9
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -87,28 +87,25 @@ async function main() {
         let postId = await user.createArticle();
         if (postId) interactGain += 1;
         await $.wait(user.getRandomTime());
-        // 获取动态列表
+        // 获取本人动态（只会拿到自己的帖子，绝不会取他人帖）
         postId = postId || (await user.getArticles());
-        if (!postId) {
-          $.log(`\u26d4\ufe0f \u83b7\u53d6\u52a8\u6001\u5931\u8d25: \u672a\u83b7\u53d6\u5230\u52a8\u6001ID\uff0c\u8df3\u8fc7\u4e92\u52a8\u4efb\u52a1`);
-          $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行失败: 未获取到动态ID`);
-          $.failCount++;
-          continue;
+        if (postId) {
+          await $.wait(user.getRandomTime());
+          // 点赞
+          if (await user.thumbsUp(postId)) interactGain += 1;
+          await $.wait(user.getRandomTime());
+          // 评论（评论不加分，但分享前必须有评论）
+          await user.comment(postId);
+          await $.wait(user.getRandomTime());
+          // 分享动态
+          if (await user.share(postId)) interactGain += 1;
+          await $.wait(user.getRandomTime());
+          // 删除动态（仅本人帖，删掉刚发的临时动态）
+          await user.deletePost(postId);
+          await $.wait(user.getRandomTime());
+        } else {
+          $.log(`⚠️ 未获取到本人动态ID，跳过点赞/评论/分享/删除（不操作他人帖子，签到照常统计）`);
         }
-        await $.wait(user.getRandomTime());
-        // 点赞
-        if (await user.thumbsUp(postId)) interactGain += 1;
-        await $.wait(user.getRandomTime());
-        // 评论（评论不加分，但分享前必须有评论）
-        await user.comment(postId);
-        await $.wait(user.getRandomTime());
-        // 分享动态
-        if (await user.share(postId)) interactGain += 1;
-        await $.wait(user.getRandomTime());
-
-        // 删除动态
-        await user.deletePost(postId);
-        await $.wait(user.getRandomTime());
         // 查询当前积分（总分）
         const score = await user.getSignInfo();
 
@@ -239,7 +236,20 @@ class UserInfo {
         headers: Object.assign({}, this.headers, getSign('h5', {})),
         dataType: "json"
       }
-      let res = await this.fetch(opts);
+      // 2.1) 执行签到；多账号连签易触发“请稍后/操作频繁”限流，按退避最多重试3次
+      let res = null, lastMsg = '';
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        res = await this.fetch(opts);
+        if (res?.code == '10000' && res?.message == '操作成功') break;
+        lastMsg = res?.message || '未知响应';
+        if (/请稍|稍后|稍候|频繁|繁忙|重试/.test(lastMsg) && attempt < 3) {
+          const waitMs = (attempt + 1) * 2000;  // 依次等待 4s、6s
+          $.log(`⏳ 签到被限流（${lastMsg}），${waitMs / 1000}秒后第${attempt + 1}次重试`);
+          await $.wait(waitMs);
+          continue;
+        }
+        break;
+      }
       if (res?.code == '10000' && res?.message == '操作成功') {
         // 3) 再查一次 info，取今日积分
         let infoRes2 = await this.fetch(infoOpts);
@@ -249,7 +259,16 @@ class UserInfo {
         $.log(point > 0 ? `✅ 签到任务: 签到成功 +${point}积分` : `✅ 签到任务: 今日已签到`);
         return point;
       } else {
-        $.log(`⛔️ 签到任务: ${res?.message}`);
+        // 重试后仍未返回操作成功：回查今日是否其实已签上（首次POST可能已生效）
+        try {
+          const chk = await this.fetch(infoOpts);
+          const ce = (chk?.data?.nowSignDetailVos || []).find(x => x.createDate === today);
+          if (ce && (ce.signStatue === 3 || ce.signStatue === 5)) {
+            $.log(`✅ 签到任务: 今日已签到`);
+            return null;
+          }
+        } catch(e) {}
+        $.log(`⛔️ 签到任务: ${lastMsg}`);
         return null;
       }
     } catch (e) {
@@ -397,9 +416,12 @@ class UserInfo {
       }
       let res = await this.fetch(opts);
       if (res?.code == '10000') {
-        const list = Array.isArray(res?.data) ? res.data : (res?.data?.records || res?.data?.list || res?.data?.rows || [])
-        let postId = getPostId(list?.[0] || res?.data)
-        if (!postId) postId = await this.getCommunityArticle()
+        const rawList = Array.isArray(res?.data) ? res.data : (res?.data?.records || res?.data?.list || res?.data?.rows || []);
+        const list = Array.isArray(rawList) ? rawList : [];
+        // mineArticleInfo 只返回本人动态；优先按 userId 命中本人，避免列表异常时误取他人帖
+        const mine = list.find(it => String(it.userId || it.createBy || it.uid || '') === String(this.userId));
+        let postId = getPostId(mine || list?.[0] || res?.data);
+        if (!postId) postId = await this.getCommunityArticle();  // 公共流兜底也只会返回本人帖子
         $.log(`\u2705 \u83b7\u53d6\u52a8\u6001: ${postId}`);
         return postId
       } else {
@@ -428,7 +450,8 @@ class UserInfo {
       if (res?.code == '10000') {
         const list = Array.isArray(res?.data) ? res.data : [];
         const mine = list.find(item => String(item.userId || item.createBy || item.uid || '') === String(this.userId));
-        return getPostId(mine || list[0]);
+        // 只操作本人动态：公共流里找不到自己的帖子时返回 null，绝不能退回 list[0]（那是他人帖子，会导致“他人创建的帖子不可删除”）
+        return mine ? getPostId(mine) : null;
       }
       return null;
     } catch (e) {
