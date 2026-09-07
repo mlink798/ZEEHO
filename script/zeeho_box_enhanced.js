@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.6.2
+#!version=2.6.3
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.6.2
+// 版本: v2.6.3
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.6.2";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-08 v2.6.2 依据真实HAR定位开关机字段：iotProperties.VehicleLock_S整车锁定状态(0未锁=开机/1锁定=关机)，vehicleHomePageV2提取，详情补车辆在线状态)`);
+const SCRIPT_VERSION = "v2.6.3";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-08 v2.6.3 修复开关机显示未知：widgets补提实时headLockState(主依据,0未锁=开机/1锁=关机)，homePageV2顶层headLockState优先于可能陈旧的iot VehicleLock_S，双HAR验证)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -819,8 +819,8 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
         batteryPullOut: String(d.batteryPullOutFlag || "") === "1",
         // 电源/ACC状态（开关机）：尝试多种可能字段名
         powerStatus: String(d.accStatus || d.powerStatus || d.vehicleStatus || d.ignitionStatus || d.powerMode || d.accState || d.powerState || d.vehicleState || d.engineStatus || d.isPowerOn || d.powerOn || "").trim(),
-        // 车锁状态：开锁=上电(开机)，锁车=下电(关机)
-        lockState: String(d.lockState || d.lockStatus || d.vehicleLockState || d.carLockState || d.doorLockState || d.lockFlag || d.isLocked || d.locked || d.centralLockingStatus || "").trim()
+        // 车锁状态：开锁=上电(开机)，锁车=下电(关机)；headLockState龙头锁为实时字段，优先取
+        lockState: String(d.headLockState || d.lockState || d.lockStatus || d.vehicleLockState || d.carLockState || d.doorLockState || d.lockFlag || d.isLocked || d.locked || d.centralLockingStatus || "").trim()
       };
     }
     return null;
@@ -881,10 +881,11 @@ async function fetchVehicleHomePage(acc, cfg, vinNo) {
       // 整车锁定状态 VehicleLock_S：0=未锁(解锁即上电=开机)，1=锁定(锁车即下电=关机)；其次用顶层龙头锁 headLockState
       const vehicleLock = pickIotProp(d, "VehicleLock_S");
       const headLockIot = pickIotProp(d, "HeadLockState");
-      const topLock = String(d.lockState || d.lockStatus || d.vehicleLockState || d.headLockState || headLockIot || "").trim();
+      // 顶层 headLockState 实时更新优先，其次iot龙头锁，最后整车锁VehicleLock_S(可能上报陈旧)
+      const topLock = String(d.headLockState || d.lockState || d.lockStatus || d.vehicleLockState || headLockIot || vehicleLock || "").trim();
       return {
         powerStatus: deepPick(d, ["accStatus","powerStatus","vehicleStatus","ignitionStatus","powerMode","accState","powerState","vehicleState","engineStatus","isPowerOn","powerOn","acc"]).trim(),
-        lockState: vehicleLock || topLock,
+        lockState: topLock,
         online: String(d.onlineStatus || d.rideState || d.online || "").trim(),
         rideState: String(d.rideState || "").trim()
       };
