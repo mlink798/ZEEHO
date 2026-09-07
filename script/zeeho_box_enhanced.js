@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.5.8
+#!version=2.5.9
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,30 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.8
+// 版本: v2.5.9
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.8";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.8 修复多账号连签“请稍后”限流(退避重试3次+回查)；社区动态只操作本人帖，杜绝“他人创建的帖子不可删除”)`);
+const SCRIPT_VERSION = "v2.5.9";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.9 适配Quantumult X：运行时兼容($prefs/$notify)、入口域名自动识别(Loon用zeeho.box / QX用www.example.com真实可解析域名)、sendResp格式修正)`);
+
+// ========== QX(Quantumult X) 运行时兼容层 ==========
+// QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
+const __IS_QX = typeof $prefs !== "undefined" && typeof $persistentStore === "undefined";
+if (__IS_QX) {
+  globalThis.$persistentStore = {
+    read: function (k) { try { return $prefs.valueForKey(k); } catch (e) { return null; } },
+    write: function (v, k) { try { $prefs.setValueForKey(v, k); return true; } catch (e) { return false; } }
+  };
+  if (typeof $notification === "undefined") {
+    globalThis.$notification = { post: function (t, s, b, o) { try { $notify(t, s, b, o); } catch (e) {} } };
+  }
+}
+// 面板入口域名：Loon 用虚拟域名 zeeho.box（Loon 可虚拟劫持不存在的域名），
+// QX 必须用真实可解析域名（默认 www.example.com，IANA 保留域名保证可解析）。
+// 从当前请求自动推断，面板内绝对链接统一用 PANEL_HOST。
+let PANEL_HOST = "http://zeeho.box";
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -1843,11 +1860,15 @@ function saveAccounts() {
 
 // ========== 响应辅助（兼容 QX / Loon / Surge） ==========
 function sendResp(status, headers, body) {
-  const isQX = typeof $task !== "undefined";
-  if (isQX) {
+  const isSurge = typeof $task !== "undefined";   // Surge 用 $task.fetch
+  const isQX = typeof $prefs !== "undefined";      // QX 用 $prefs 持久化
+  if (isSurge) {
+    // Surge 格式：顶层 status/headers/body
     $done({ status: status, headers: headers, body: body });
   } else {
-    $done({ response: { status: status, headers: headers, body: body } });
+    // QX / Loon 格式：response 包装；QX 下 status 用字符串更标准
+    const st = isQX ? ("HTTP/1.1 " + status + " OK") : status;
+    $done({ response: { status: st, headers: headers, body: body } });
   }
 }
 // ========== 主入口：重写路由 ==========
@@ -1859,6 +1880,8 @@ function sendResp(status, headers, body) {
   }
 
   const url = $request.url || "";
+  // 自动识别当前入口域名：Loon=http://zeeho.box，QX=http://www.example.com
+  try { const _u = new URL(url); PANEL_HOST = _u.origin; } catch (e) {}
   // 极核API请求由前面的autoCapture处理，主入口跳过，避免$done调用两次
   if (url.includes('zeehoev.com')) {
     console.log('[主入口] 跳过非面板请求: ' + url.substring(0, 80));
@@ -2066,7 +2089,7 @@ function sendResp(status, headers, body) {
       const qName = u.searchParams.get('name') || '';
       const qToken = cleanToken(u.searchParams.get('token') || '');
       if (!qToken) {
-        sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存失败</h2><p>Token为空</p><a href="http://zeeho.box/config">返回配置</a></body></html>');
+        sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存失败</h2><p>Token为空</p><a href="' + PANEL_HOST + '/config">返回配置</a></body></html>');
         return;
       }
       const cfg = getConfig();
@@ -2099,7 +2122,7 @@ function sendResp(status, headers, body) {
       saveAccounts(accounts);
       console.log('[快速保存] 账号已保存: ' + acc.userName + ' (' + qUid + ')' + (fetchErr ? ' [获取ID失败: '+fetchErr+']' : ''));
       // 返回成功页面
-      const okHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置已保存</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#F0F4F8;padding:30px 16px}.card{background:#fff;border-radius:14px;padding:30px 20px;max-width:420px;margin:0 auto;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.06)}.icon{width:60px;height:60px;border-radius:50%;background:#D1FAE5;color:#059669;font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}.title{font-size:18px;font-weight:700;margin-bottom:8px}.info{font-size:13px;color:#64748B;line-height:1.8;margin-bottom:20px}.info b{color:#0F172A}.btn{display:inline-block;padding:10px 24px;border-radius:8px;background:#0891B2;color:#fff;text-decoration:none;font-size:14px;font-weight:600;margin:4px}.btn2{background:#fff;color:#475569;border:1px solid #E2E8F0}.warn{font-size:11px;color:#F59E0B;margin-top:10px}</style></head><body><div class="card"><div class="icon">✓</div><div class="title">配置保存成功</div><div class="info">昵称：<b>' + (acc.userName) + '</b><br>用户ID：<b>' + qUid + '</b>' + (fetchErr ? '<div class="warn">⚠️ 自动获取用户ID失败（'+fetchErr+'），已用临时ID保存，可在配置页点「获取ID」重试</div>' : '') + '</div><a href="http://zeeho.box/" class="btn">查看面板</a> <a href="http://zeeho.box/config" class="btn btn2">配置页</a></div></body></html>';
+      const okHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置已保存</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#F0F4F8;padding:30px 16px}.card{background:#fff;border-radius:14px;padding:30px 20px;max-width:420px;margin:0 auto;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.06)}.icon{width:60px;height:60px;border-radius:50%;background:#D1FAE5;color:#059669;font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}.title{font-size:18px;font-weight:700;margin-bottom:8px}.info{font-size:13px;color:#64748B;line-height:1.8;margin-bottom:20px}.info b{color:#0F172A}.btn{display:inline-block;padding:10px 24px;border-radius:8px;background:#0891B2;color:#fff;text-decoration:none;font-size:14px;font-weight:600;margin:4px}.btn2{background:#fff;color:#475569;border:1px solid #E2E8F0}.warn{font-size:11px;color:#F59E0B;margin-top:10px}</style></head><body><div class="card"><div class="icon">✓</div><div class="title">配置保存成功</div><div class="info">昵称：<b>' + (acc.userName) + '</b><br>用户ID：<b>' + qUid + '</b>' + (fetchErr ? '<div class="warn">⚠️ 自动获取用户ID失败（'+fetchErr+'），已用临时ID保存，可在配置页点「获取ID」重试</div>' : '') + '</div><a href="' + PANEL_HOST + '/" class="btn">查看面板</a> <a href="' + PANEL_HOST + '/config" class="btn btn2">配置页</a></div></body></html>';
       sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, okHtml);
     } catch(e) {
       sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存异常</h2><p>' + String(e) + '</p></body></html>');
