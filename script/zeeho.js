@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.7
+#!version=2.4.8
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -141,6 +141,8 @@ async function main() {
           error: null,
           steps: [`签到 +${signScore}`, `盲盒 +${blindScore}`, `互动 +${interactGain}`, `连签 ${count}天`]
         });
+        // 单账号独立 Bark：签到成功才推送（Key 留空则跳过）
+        await barkNotify(user.barkKey, `极核签到成功 · ${user.userName}`, `今日获得 ${gain} 分（签到${signScore}/盲盒${blindScore}/互动${interactGain}），连签${count}天`);
         $.successCount++;
       } else {
         // ck 失效
@@ -179,6 +181,8 @@ class UserInfo {
     this.userId = String(user.userId || "").trim();
     this.userName = user.userName || `账号${this.index}`;
     this.userAgent = user.userAgent || "ZEEHO/5.0 (iPhone; iOS 17.0; Scale/3.00)";
+    // 每账号独立 Bark Key（面板配置页保存，经 zeeho_data 同步过来）
+    this.barkKey = cleanBarkKey(user.barkKey);
     this.ckStatus = true;
     //请求封装
     this.baseUrl = ``;
@@ -692,6 +696,28 @@ async function Request(o) {
     return null;
   }
 };
+// ========== 单账号 Bark 推送（签到成功通知） ==========
+// 官方完整链接 https://api.day.app/xxx 只保留 xxx；纯Key原样；自建服务器完整地址保留
+function cleanBarkKey(k) {
+  let s = String(k || "").trim().replace(/\/+$/, "");
+  s = s.replace(/^https?:\/\/api\.day\.app\//i, "");
+  return s.trim();
+}
+async function barkNotify(barkKey, title, body) {
+  try {
+    const k = cleanBarkKey(barkKey);
+    if (!k) return;
+    let base = "https://api.day.app", key = k;
+    const m = k.match(/^(https?:\/\/[^/]+)\/(.+)$/i);
+    if (m) { base = m[1]; key = m[2]; }
+    key = key.replace(/^\/+/, "");
+    const u = base + "/" + encodeURIComponent(key) + "/" + encodeURIComponent(title) + "/" + encodeURIComponent(body) + "?group=ZEEHO&sound=birdsong";
+    await $.http.get({ url: u, timeout: 8000 });
+    $.log(`🔔Bark通知已推送: ${title}`);
+  } catch (e) {
+    $.log(`⚠️Bark推送失败: ${e}`);
+  }
+}
 // ========== 运行日志（供面板读取今日得分） ==========
 function addSigninLog(entry) {
   try {
