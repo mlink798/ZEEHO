@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.5.8
+#!version=2.6.0
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,30 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.5.8
+// 版本: v2.6.0
 // 更新日期: 2026-09-07
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.5.8";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.5.8 修复多账号连签“请稍后”限流(退避重试3次+回查)；社区动态只操作本人帖，杜绝“他人创建的帖子不可删除”)`);
+const SCRIPT_VERSION = "v2.6.0";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-07 v2.6.0 车辆开关机状态显示：widgets/vehicleHomePage双接口提取电源/ACC/车锁字段，开锁=上电开机、锁车=下电关机，卡片与详情弹窗同步显示)`);
+
+// ========== QX(Quantumult X) 运行时兼容层 ==========
+// QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
+const __IS_QX = typeof $prefs !== "undefined" && typeof $persistentStore === "undefined";
+if (__IS_QX) {
+  globalThis.$persistentStore = {
+    read: function (k) { try { return $prefs.valueForKey(k); } catch (e) { return null; } },
+    write: function (v, k) { try { $prefs.setValueForKey(v, k); return true; } catch (e) { return false; } }
+  };
+  if (typeof $notification === "undefined") {
+    globalThis.$notification = { post: function (t, s, b, o) { try { $notify(t, s, b, o); } catch (e) {} } };
+  }
+}
+// 面板入口域名：Loon 用虚拟域名 zeeho.box（Loon 可虚拟劫持不存在的域名），
+// QX 必须用真实可解析域名（默认 www.example.com，IANA 保留域名保证可解析）。
+// 从当前请求自动推断，面板内绝对链接统一用 PANEL_HOST。
+let PANEL_HOST = "http://zeeho.box";
 
 // ========== 自动捕获 appId/appSecret ==========
 // 匹配规则需同时覆盖 zeeho.box 和极核API：^https?://(zeeho\\.box|.*zeehoev\\.com)/.*
@@ -799,7 +816,42 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
         vehicleName: String(d.vehicleName || "").trim(),
         vehicleImageUrl: String(d.vehicleScalePicUrl || d.vehiclePicUrl || "").trim(),
         headLockState: String(d.headLockState || "").trim(),
-        batteryPullOut: String(d.batteryPullOutFlag || "") === "1"
+        batteryPullOut: String(d.batteryPullOutFlag || "") === "1",
+        // 电源/ACC状态（开关机）：尝试多种可能字段名
+        powerStatus: String(d.accStatus || d.powerStatus || d.vehicleStatus || d.ignitionStatus || d.powerMode || d.accState || d.powerState || d.vehicleState || d.engineStatus || d.isPowerOn || d.powerOn || "").trim(),
+        // 车锁状态：开锁=上电(开机)，锁车=下电(关机)
+        lockState: String(d.lockState || d.lockStatus || d.vehicleLockState || d.carLockState || d.doorLockState || d.lockFlag || d.isLocked || d.locked || d.centralLockingStatus || "").trim()
+      };
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
+// 车辆首页综合数据（极核App首页用，可能包含开关机/ACC状态、车锁状态、在线状态）
+async function fetchVehicleHomePage(acc, cfg, vinNo) {
+  try {
+    const token = cleanToken(acc.token);
+    const signH = getSign("app", {}, '', cfg);
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json;charset=UTF-8",
+      "interfaceversion": "2",
+      "user_id": acc.userId || "",
+      ...signH
+    };
+    // 先尝试 POST（body 带 vinNo），失败再尝试 GET（query 带 vinNo）
+    let res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleHomePage`, headers, JSON.stringify({ vinNo: vinNo }));
+    if (!(res && (res.code == "10000" || res.code === 10000) && res.data)) {
+      res = await httpGet(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleHomePage?vinNo=${encodeURIComponent(vinNo)}`, headers);
+    }
+    if (res && (res.code == "10000" || res.code === 10000) && res.data) {
+      const d = res.data;
+      // 车辆数据可能嵌套在 data.vehicleInfo / data.vehicle / data.vehicleData 里
+      const v = d.vehicleInfo || d.vehicle || d.vehicleData || d;
+      return {
+        powerStatus: String(v.accStatus || v.powerStatus || v.vehicleStatus || v.ignitionStatus || v.powerMode || v.accState || v.powerState || v.vehicleState || v.engineStatus || v.isPowerOn || v.powerOn || "").trim(),
+        lockState: String(v.lockState || v.lockStatus || v.vehicleLockState || v.carLockState || v.doorLockState || v.lockFlag || v.isLocked || v.locked || v.centralLockingStatus || "").trim(),
+        online: String(v.onlineStatus || v.online || v.isOnline || v.vehicleOnline || "").trim()
       };
     }
     return null;
@@ -917,7 +969,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "", powerStatus: "", lockState: "", online: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -926,12 +978,13 @@ async function fetchVehicleInfo(acc, cfg) {
     result.vehicleName = v.name;
     result.vinNo = v.vinNo;
     result.vehicleImageUrl = v.pic;
-    const [widgets, tire, ride, battery, service] = await Promise.all([
+    const [widgets, tire, ride, battery, service, homePage] = await Promise.all([
       fetchVehicleWidgets(acc, cfg, v.vinNo).catch(() => null),
       fetchTirePressure(acc, cfg, v.vinNo).catch(() => null),
       fetchRideInfo(acc, cfg, v.vinNo).catch(() => null),
       fetchBatteryChargeState(acc, cfg, v.vinNo).catch(() => ({ chargeState: "未充电", voltage: 0, current: 0, batteryTemp: 0, soc: 0 })),
-      fetchServiceRechargeDetail(acc, cfg, v.vinNo).catch(() => null)
+      fetchServiceRechargeDetail(acc, cfg, v.vinNo).catch(() => null),
+      fetchVehicleHomePage(acc, cfg, v.vinNo).catch(() => null)
     ]);
     if (widgets) {
       result.batteryPercent = widgets.batteryPercent;
@@ -939,8 +992,16 @@ async function fetchVehicleInfo(acc, cfg) {
       result.voltage = widgets.voltage;
       result.address = widgets.address;
       result.locationTime = widgets.locationTime;
+      result.powerStatus = widgets.powerStatus || "";
+      result.lockState = widgets.lockState || "";
       if (widgets.vehicleName) result.vehicleName = widgets.vehicleName;
       if (widgets.vehicleImageUrl) result.vehicleImageUrl = widgets.vehicleImageUrl;
+    }
+    // homePage 优先（可能包含更准确的开关机/车锁状态）
+    if (homePage) {
+      if (homePage.powerStatus) result.powerStatus = homePage.powerStatus;
+      if (homePage.lockState) result.lockState = homePage.lockState;
+      if (homePage.online) result.online = homePage.online;
     }
     if (tire) {
       result.frontPressure = tire.frontPressure;
@@ -1141,6 +1202,25 @@ function parseBody(req) {
 
 
 // ========== HTML: 看板页 ==========
+// 根据电源状态/车锁状态判断开关机显示（优先电源字段，其次用车锁推断：开锁=上电/开机，锁车=下电/关机）
+function getPowerDisplay(powerStatus, lockState) {
+  const p = String(powerStatus || "").toLowerCase().trim();
+  const l = String(lockState || "").toLowerCase().trim();
+  const onVals = ["1", "on", "true", "开机", "open", "激活", "acc_on", "acc on", "power_on", "power on", "已开机", "已上电"];
+  const offVals = ["0", "off", "false", "关机", "closed", "待机", "acc_off", "acc off", "power_off", "power off", "已关机", "已下电"];
+  if (p) {
+    if (onVals.includes(p)) return { text: "已开机", cls: "power-on" };
+    if (offVals.includes(p)) return { text: "已关机", cls: "power-off" };
+  }
+  if (l) {
+    const lockOnVals = ["0", "未锁", "开锁", "unlocked", "false", "open", "已开锁", "未锁车"];
+    const lockOffVals = ["1", "已锁", "锁车", "locked", "true", "closed", "已锁车"];
+    if (lockOnVals.includes(l)) return { text: "已开机", cls: "power-on" };
+    if (lockOffVals.includes(l)) return { text: "已关机", cls: "power-off" };
+  }
+  return { text: "状态未知", cls: "power-unknown" };
+}
+
 function renderDashboard(accounts, data, cfg, updateTime) {
   const totalScore = data.reduce((s, a) => s + (a.score || 0), 0);
   const signedCount = data.filter(a => a.signedToday).length;
@@ -1169,6 +1249,8 @@ function renderDashboard(accounts, data, cfg, updateTime) {
       if (hours >= 1) chargeEta = "约" + hours.toFixed(1) + "小时充满";
       else chargeEta = "约" + Math.round(hours * 60) + "分钟充满";
     }
+    // 开关机状态（优先电源字段，其次用车锁推断）
+    const powerDisplay = getPowerDisplay(v.powerStatus, v.lockState);
 
     return `
     <div class="acc-card ${a.error ? 'acc-error' : ''}">
@@ -1202,6 +1284,7 @@ function renderDashboard(accounts, data, cfg, updateTime) {
         <div class="vehicle-label">
           <span>🚗 ${a.vehicle.vehicleName || "车辆"} ${a.vehicle.vinNo ? `<span class="vin-no" id="vin_mask_${idx}">${maskVin(a.vehicle.vinNo)}</span><button type="button" class="vin-toggle-btn" onclick="event.stopPropagation();toggleVin(${idx},this)">显示</button>` : ""}</span>
           <span class="vehicle-charge ${isCharging ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
+          <span class="vehicle-power ${powerDisplay.cls}">${powerDisplay.text}</span>
         </div>
         ${isCharging ? `
         <div class="charge-progress-row">
@@ -1330,6 +1413,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .vin-toggle-btn:active{transform:scale(.94)}
 .vehicle-charge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:#F1F5F9;color:#64748B}
 .vehicle-charge.charging{background:#D1FAE5;color:#065F46}
+.vehicle-power{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;margin-left:4px}
+.vehicle-power.power-on{background:#D1FAE5;color:#065F46}
+.vehicle-power.power-off{background:#F1F5F9;color:#64748B}
+.vehicle-power.power-unknown{background:#FEF3C7;color:#92400E}
 .vehicle-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .v-kpi{text-align:center;background:#F8FAFC;border-radius:6px;padding:6px 2px}
 .v-kpi-val{font-size:14px;font-weight:800;color:#0F172A}
@@ -1550,6 +1637,22 @@ function showVehicleDetail(idx) {
   var rows = [];
   if (v.vinNo) rows.push('<div class="v-detail-row"><span class="v-detail-label">车架号</span><span><span class="v-detail-val" id="vin_detail_mask" style="font-family:monospace;font-size:12px">'+maskVin(v.vinNo)+'</span> <button type="button" class="vin-toggle-btn" onclick="toggleDetailVin('+idx+',this)">显示</button></span></div>');
   rows.push('<div class="v-detail-row"><span class="v-detail-label">充电状态</span><span class="v-detail-val">'+(v.chargeState || '未充电')+'</span></div>');
+  // 电源状态（开关机）：优先电源字段，其次用车锁推断（开锁=上电/开机，锁车=下电/关机）
+  var powerText = "状态未知", powerColor = "#92400E";
+  var p = String(v.powerStatus || "").toLowerCase().trim();
+  var l = String(v.lockState || "").toLowerCase().trim();
+  var onVals = ["1","on","true","开机","open","激活","acc_on","acc on","power_on","power on","已开机","已上电"];
+  var offVals = ["0","off","false","关机","closed","待机","acc_off","acc off","power_off","power off","已关机","已下电"];
+  if (p) {
+    if (onVals.indexOf(p) >= 0) { powerText = "已开机"; powerColor = "#065F46"; }
+    else if (offVals.indexOf(p) >= 0) { powerText = "已关机"; powerColor = "#64748B"; }
+  } else if (l) {
+    var lockOnVals = ["0","未锁","开锁","unlocked","false","open","已开锁","未锁车"];
+    var lockOffVals = ["1","已锁","锁车","locked","true","closed","已锁车"];
+    if (lockOnVals.indexOf(l) >= 0) { powerText = "已开机"; powerColor = "#065F46"; }
+    else if (lockOffVals.indexOf(l) >= 0) { powerText = "已关机"; powerColor = "#64748B"; }
+  }
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">电源状态</span><span class="v-detail-val" style="color:'+powerColor+'">'+powerText+'</span></div>');
   rows.push('<div class="v-detail-row"><span class="v-detail-label">电量SOC</span><span class="v-detail-val" style="font-weight:700;color:'+(v.batteryPercent<=20?'#EF4444':v.batteryPercent<=50?'#F59E0B':'#0891B2')+'">'+v.batteryPercent+'%</span></div>');
   if (v.voltage) rows.push('<div class="v-detail-row"><span class="v-detail-label">电压</span><span class="v-detail-val">'+v.voltage.toFixed(1)+'V</span></div>');
   if (v.current) rows.push('<div class="v-detail-row"><span class="v-detail-label">电流</span><span class="v-detail-val">'+v.current.toFixed(1)+'A</span></div>');
@@ -1843,11 +1946,15 @@ function saveAccounts() {
 
 // ========== 响应辅助（兼容 QX / Loon / Surge） ==========
 function sendResp(status, headers, body) {
-  const isQX = typeof $task !== "undefined";
-  if (isQX) {
+  const isSurge = typeof $task !== "undefined";   // Surge 用 $task.fetch
+  const isQX = typeof $prefs !== "undefined";      // QX 用 $prefs 持久化
+  if (isSurge) {
+    // Surge 格式：顶层 status/headers/body
     $done({ status: status, headers: headers, body: body });
   } else {
-    $done({ response: { status: status, headers: headers, body: body } });
+    // QX / Loon 格式：response 包装；QX 下 status 用字符串更标准
+    const st = isQX ? ("HTTP/1.1 " + status + " OK") : status;
+    $done({ response: { status: st, headers: headers, body: body } });
   }
 }
 // ========== 主入口：重写路由 ==========
@@ -1859,6 +1966,8 @@ function sendResp(status, headers, body) {
   }
 
   const url = $request.url || "";
+  // 自动识别当前入口域名：Loon=http://zeeho.box，QX=http://www.example.com
+  try { const _u = new URL(url); PANEL_HOST = _u.origin; } catch (e) {}
   // 极核API请求由前面的autoCapture处理，主入口跳过，避免$done调用两次
   if (url.includes('zeehoev.com')) {
     console.log('[主入口] 跳过非面板请求: ' + url.substring(0, 80));
@@ -2066,7 +2175,7 @@ function sendResp(status, headers, body) {
       const qName = u.searchParams.get('name') || '';
       const qToken = cleanToken(u.searchParams.get('token') || '');
       if (!qToken) {
-        sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存失败</h2><p>Token为空</p><a href="http://zeeho.box/config">返回配置</a></body></html>');
+        sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存失败</h2><p>Token为空</p><a href="' + PANEL_HOST + '/config">返回配置</a></body></html>');
         return;
       }
       const cfg = getConfig();
@@ -2099,7 +2208,7 @@ function sendResp(status, headers, body) {
       saveAccounts(accounts);
       console.log('[快速保存] 账号已保存: ' + acc.userName + ' (' + qUid + ')' + (fetchErr ? ' [获取ID失败: '+fetchErr+']' : ''));
       // 返回成功页面
-      const okHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置已保存</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#F0F4F8;padding:30px 16px}.card{background:#fff;border-radius:14px;padding:30px 20px;max-width:420px;margin:0 auto;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.06)}.icon{width:60px;height:60px;border-radius:50%;background:#D1FAE5;color:#059669;font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}.title{font-size:18px;font-weight:700;margin-bottom:8px}.info{font-size:13px;color:#64748B;line-height:1.8;margin-bottom:20px}.info b{color:#0F172A}.btn{display:inline-block;padding:10px 24px;border-radius:8px;background:#0891B2;color:#fff;text-decoration:none;font-size:14px;font-weight:600;margin:4px}.btn2{background:#fff;color:#475569;border:1px solid #E2E8F0}.warn{font-size:11px;color:#F59E0B;margin-top:10px}</style></head><body><div class="card"><div class="icon">✓</div><div class="title">配置保存成功</div><div class="info">昵称：<b>' + (acc.userName) + '</b><br>用户ID：<b>' + qUid + '</b>' + (fetchErr ? '<div class="warn">⚠️ 自动获取用户ID失败（'+fetchErr+'），已用临时ID保存，可在配置页点「获取ID」重试</div>' : '') + '</div><a href="http://zeeho.box/" class="btn">查看面板</a> <a href="http://zeeho.box/config" class="btn btn2">配置页</a></div></body></html>';
+      const okHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置已保存</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#F0F4F8;padding:30px 16px}.card{background:#fff;border-radius:14px;padding:30px 20px;max-width:420px;margin:0 auto;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.06)}.icon{width:60px;height:60px;border-radius:50%;background:#D1FAE5;color:#059669;font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}.title{font-size:18px;font-weight:700;margin-bottom:8px}.info{font-size:13px;color:#64748B;line-height:1.8;margin-bottom:20px}.info b{color:#0F172A}.btn{display:inline-block;padding:10px 24px;border-radius:8px;background:#0891B2;color:#fff;text-decoration:none;font-size:14px;font-weight:600;margin:4px}.btn2{background:#fff;color:#475569;border:1px solid #E2E8F0}.warn{font-size:11px;color:#F59E0B;margin-top:10px}</style></head><body><div class="card"><div class="icon">✓</div><div class="title">配置保存成功</div><div class="info">昵称：<b>' + (acc.userName) + '</b><br>用户ID：<b>' + qUid + '</b>' + (fetchErr ? '<div class="warn">⚠️ 自动获取用户ID失败（'+fetchErr+'），已用临时ID保存，可在配置页点「获取ID」重试</div>' : '') + '</div><a href="' + PANEL_HOST + '/" class="btn">查看面板</a> <a href="' + PANEL_HOST + '/config" class="btn btn2">配置页</a></div></body></html>';
       sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, okHtml);
     } catch(e) {
       sendResp(200, { "Content-Type": "text/html; charset=utf-8" }, '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2 style="color:#EF4444">保存异常</h2><p>' + String(e) + '</p></body></html>');
