@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.7.2
+#!version=2.7.1
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.7.2
+// 版本: v2.7.1
 // 更新日期: 2026-09-09
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.7.2";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.7.2 云端开/关锁适配App3.0.1新AES密钥：经砸壳二进制逆向确认新密钥ce2cd7cb…，明文为带空格换行的JSON且lockFlag为字符串"1"/"0"，已用4条官方真实密文逐字节复现验证；其余沿用v2.7.1)`);
+const SCRIPT_VERSION = "v2.7.1";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.7.1 修复车架号“显示/隐藏”按钮与车辆详情弹窗点击无反应：删除重复的空数组声明，避免覆盖顶部注入的真实车辆数据；云端开关锁逻辑沿用v2.7.0，待App3.0.1新AES密钥确认后启用)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -661,7 +661,7 @@ function aes256EcbEncryptBase64(plaintext, keyStr) {
 }
 
 // ========== 车辆远程控制（寻车/鸣笛闪灯/开坐垫/云端开关锁，均会真实操作车辆） ==========
-const VEHICLE_AES_KEY = "ce2cd7cb57124c1349dd8543bf6fd31d"; // App3.0.1云端开关锁AES-256-ECB密钥(32字节ASCII)，由砸壳主二进制cfAESKey(生产环境isDevEnv=NO分支)逆向确认；明文为带空格换行JSON、lockFlag为字符串，加密成Base64放进body{"secret":...}
+const VEHICLE_AES_KEY = "9dbc2cbf2ec327699301b495010316ec"; // App3.0.0云端开关锁AES-256-ECB密钥(32字节ASCII)，经开源集成 FlyRenxing/zeeho 证实；明文{"lockFlag","vinNo"}加密成Base64放进body{"secret":...}
 const VEHICLE_ACTION_TEXT = { find: "短按寻车", loudFind: "鸣笛闪灯", cushion: "打开坐垫", unlock: "云端开锁", lock: "云端关锁" };
 function vehicleBaseHeaders(acc, cfg) {
   // 与官方App真实请求头对齐：UA / x-app-info / Accept；user_id 同时走独立头与 Cookie（官方放在 Cookie 里）
@@ -718,16 +718,15 @@ async function vehicleControl(acc, action, cfg) {
       return vehicleCheckRes(res, "开坐垫指令已下发，坐垫应弹起");
     }
     if (action === "unlock" || action === "lock") {
-      // 云端开关锁(App 3.0.1)：POST vehicleSet/network/unlock，lockFlag "1"=开锁 / "0"=关锁（同一接口靠 lockFlag 区分，值为字符串而非数字）。
-      // 明文必须与官方 NSJSONSerialization 输出逐字节一致（冒号后带空格、键值间为 ",\n  "）：
-      // {\n  "lockFlag" : "1",\n  "vinNo" : "VIN"\n} → AES-256-ECB/PKCS7(VEHICLE_AES_KEY，32字节ASCII) → Base64；
-      // 实际发送 body={"secret":Base64密文}；注意【签名签的是明文 plain，不是 secret】（密钥/明文格式已用4条官方真实密文逐字节复现验证）。
-      const lockFlag = action === "unlock" ? "1" : "0";
-      const plain = `{\n  "lockFlag" : "${lockFlag}",\n  "vinNo" : "${vin}"\n}`;
+      // 云端开关锁(App 3.0.0)：POST vehicleSet/network/unlock，lockFlag 1=开锁 / 0=关锁（同一接口靠 lockFlag 区分）。
+      // 明文紧凑JSON {"lockFlag":n,"vinNo":vin} → AES-256-ECB/PKCS7(VEHICLE_AES_KEY) → Base64；
+      // 实际发送 body={"secret":Base64密文}；注意【签名签的是明文 plain，不是 secret】（与官方App/开源集成 FlyRenxing/zeeho 一致；AES已与标准库逐向量比对一致）。
+      const lockFlag = action === "unlock" ? 1 : 0;
+      const plain = JSON.stringify({ lockFlag: lockFlag, vinNo: vin });
       const secret = aes256EcbEncryptBase64(plain, VEHICLE_AES_KEY);
       const sendBody = JSON.stringify({ secret: secret });
       const h = { ...base, ...getSign("app", {}, plain, c) };
-      console.log(`[车辆控制] ${action} 明文=${JSON.stringify(plain)} secret=${secret.slice(0,24)}...`);
+      console.log(`[车辆控制] ${action} 明文=${plain} secret=${secret.slice(0,24)}...`);
       const res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleSet/network/unlock`, h, sendBody);
       try { console.log(`[车辆控制] ${action} 服务器返回=${JSON.stringify(res).slice(0,300)}`); } catch(e) {}
       return vehicleCheckRes(res, action === "unlock" ? "云端开锁指令已下发" : "云端关锁指令已下发");
