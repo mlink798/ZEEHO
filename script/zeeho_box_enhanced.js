@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.7.1
+#!version=2.8.0
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.7.1
+// 版本: v2.8.0
 // 更新日期: 2026-09-09
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.7.1";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.7.1 修复车架号“显示/隐藏”按钮与车辆详情弹窗点击无反应：删除重复的空数组声明，避免覆盖顶部注入的真实车辆数据；云端开关锁逻辑沿用v2.7.0，待App3.0.1新AES密钥确认后启用)`);
+const SCRIPT_VERSION = "v2.8.0";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.8.0 ①云端控车AES密钥改为配置页手动填写、保存后才能开/关锁(默认不内置,防滥用)；②修复车辆实际已动作却因响应超时报红叉：控车请求单独放宽超时且超时按“指令已下发”提示；其余沿用v2.7.2)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -121,7 +121,8 @@ const CK_LOGS = "zeeho_logs";
 const DEFAULT_CONFIG = {
   app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
   h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" },
-  community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true }
+  community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true },
+  vehicleAesKey: "" // 云端开/关锁AES-256-ECB密钥(32位)。默认留空不内置，需用户在配置页手动填写并保存后才能使用云端开/关锁（防滥用）
 };
 
 // ========== 版本信息 ==========
@@ -144,7 +145,8 @@ function getConfig() {
         // 优先级：看板配置 > 捕获脚本 > 默认值
         app: { appId: c.app?.appId || storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
         h5:  { appId: c.h5?.appId || storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
-        community: { enablePost: c.community?.enablePost !== false, enableLike: c.community?.enableLike !== false, enableComment: c.community?.enableComment !== false, enableShare: c.community?.enableShare !== false, enableDelete: c.community?.enableDelete !== false }
+        community: { enablePost: c.community?.enablePost !== false, enableLike: c.community?.enableLike !== false, enableComment: c.community?.enableComment !== false, enableShare: c.community?.enableShare !== false, enableDelete: c.community?.enableDelete !== false },
+        vehicleAesKey: (typeof c.vehicleAesKey === "string" ? c.vehicleAesKey : "").trim()
       };
     }
   } catch(e) {}
@@ -152,7 +154,8 @@ function getConfig() {
   return {
     app: { appId: storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
     h5:  { appId: storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
-    community: JSON.parse(JSON.stringify(DEFAULT_CONFIG.community))
+    community: JSON.parse(JSON.stringify(DEFAULT_CONFIG.community)),
+    vehicleAesKey: ""
   };
 }
 function saveConfig(cfg) {
@@ -470,10 +473,12 @@ async function runSigninForAccount(acc, cfg) {
 }
 
 // ========== 辅助：HTTP POST/PUT/DELETE ==========
-function httpPost(url, headers, body) {
+function httpPost(url, headers, body, timeoutMs) {
   return new Promise((resolve) => {
     const isQX = typeof $task !== "undefined";
     const opts = { url, headers, method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) };
+    // 单次请求超时：QX($task.fetch)单位为毫秒，Loon/Surge($httpClient)单位为秒，分别换算
+    if (timeoutMs && timeoutMs > 0) opts.timeout = isQX ? timeoutMs : Math.max(1, Math.round(timeoutMs / 1000));
     if (isQX) {
       $task.fetch(opts).then(
         function(resp) { try { resolve(JSON.parse(resp.body)); } catch(e) { resolve({ error: "parse error", raw: resp.body }); } },
@@ -661,7 +666,8 @@ function aes256EcbEncryptBase64(plaintext, keyStr) {
 }
 
 // ========== 车辆远程控制（寻车/鸣笛闪灯/开坐垫/云端开关锁，均会真实操作车辆） ==========
-const VEHICLE_AES_KEY = "9dbc2cbf2ec327699301b495010316ec"; // App3.0.0云端开关锁AES-256-ECB密钥(32字节ASCII)，经开源集成 FlyRenxing/zeeho 证实；明文{"lockFlag","vinNo"}加密成Base64放进body{"secret":...}
+// 云端开/关锁 AES-256-ECB 密钥【不再内置】：统一从配置 cfg.vehicleAesKey 读取，用户须在配置页手动填写并保存后才能开/关锁（防滥用）。
+// 算法：AES-256-ECB/PKCS7（32位密钥按ASCII），明文为带空格换行JSON、lockFlag为字符串"1"/"0"，密文Base64放进 body{"secret":...}
 const VEHICLE_ACTION_TEXT = { find: "短按寻车", loudFind: "鸣笛闪灯", cushion: "打开坐垫", unlock: "云端开锁", lock: "云端关锁" };
 function vehicleBaseHeaders(acc, cfg) {
   // 与官方App真实请求头对齐：UA / x-app-info / Accept；user_id 同时走独立头与 Cookie（官方放在 Cookie 里）
@@ -683,6 +689,11 @@ function vehicleBaseHeaders(acc, cfg) {
 }
 function vehicleCheckRes(res, okMsg) {
   if (res && !res.error && (res.code == "10000" || res.code === 10000)) return { ok: true, message: okMsg };
+  // 控车指令经4G云端下发到车，响应常慢于客户端默认超时时长；超时时车辆往往已实际执行，按“已下发”提示，避免明明成功却弹红叉
+  const errText = String((res && (res.error || res.message || res.msg)) || "").toLowerCase();
+  if (res && res.error && /timeout|timed out|time out|请求超时|reuqest/.test(errText)) {
+    return { ok: true, message: okMsg + "（响应超时但车辆通常已执行，可下拉刷新车辆状态确认）" };
+  }
   return { ok: false, message: (res && (res.message || res.msg)) || (res && res.error) || "指令下发失败", code: res && res.code };
 }
 async function vehicleControl(acc, action, cfg) {
@@ -718,16 +729,22 @@ async function vehicleControl(acc, action, cfg) {
       return vehicleCheckRes(res, "开坐垫指令已下发，坐垫应弹起");
     }
     if (action === "unlock" || action === "lock") {
-      // 云端开关锁(App 3.0.0)：POST vehicleSet/network/unlock，lockFlag 1=开锁 / 0=关锁（同一接口靠 lockFlag 区分）。
-      // 明文紧凑JSON {"lockFlag":n,"vinNo":vin} → AES-256-ECB/PKCS7(VEHICLE_AES_KEY) → Base64；
-      // 实际发送 body={"secret":Base64密文}；注意【签名签的是明文 plain，不是 secret】（与官方App/开源集成 FlyRenxing/zeeho 一致；AES已与标准库逐向量比对一致）。
-      const lockFlag = action === "unlock" ? 1 : 0;
-      const plain = JSON.stringify({ lockFlag: lockFlag, vinNo: vin });
-      const secret = aes256EcbEncryptBase64(plain, VEHICLE_AES_KEY);
+      // 云端开关锁(App 3.0.1)：POST vehicleSet/network/unlock，lockFlag "1"=开锁 / "0"=关锁（同一接口靠 lockFlag 区分，值为字符串而非数字）。
+      // 密钥来自配置页 cfg.vehicleAesKey（默认不内置，必须先填写保存，防止脚本被滥用）。
+      const vKey = (c.vehicleAesKey || "").trim();
+      if (!vKey) return { ok: false, message: "尚未配置云端控车密钥：请到「配置 → 签名密钥配置」填写云端控车AES密钥并保存后，再使用开/关锁" };
+      if (!/^[0-9a-fA-F]{32}$/.test(vKey)) return { ok: false, message: "云端控车密钥格式错误（应为32位十六进制），请到配置页核对后保存" };
+      // 明文必须与官方 NSJSONSerialization 输出逐字节一致（冒号后带空格、键值间为 ",\n  "）：
+      // {\n  "lockFlag" : "1",\n  "vinNo" : "VIN"\n} → AES-256-ECB/PKCS7(密钥32字节ASCII) → Base64；
+      // 实际发送 body={"secret":Base64密文}；注意【签名签的是明文 plain，不是 secret】（密钥/明文格式已用4条官方真实密文逐字节复现验证）。
+      const lockFlag = action === "unlock" ? "1" : "0";
+      const plain = `{\n  "lockFlag" : "${lockFlag}",\n  "vinNo" : "${vin}"\n}`;
+      const secret = aes256EcbEncryptBase64(plain, vKey);
       const sendBody = JSON.stringify({ secret: secret });
       const h = { ...base, ...getSign("app", {}, plain, c) };
-      console.log(`[车辆控制] ${action} 明文=${plain} secret=${secret.slice(0,24)}...`);
-      const res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleSet/network/unlock`, h, sendBody);
+      console.log(`[车辆控制] ${action} 明文=${JSON.stringify(plain)} secret=${secret.slice(0,24)}...`);
+      // 车辆唤醒+云端下发较慢，给25秒单次超时，避免在默认超时时长内误报（即便最终仍超时也会按“已下发”容错）
+      const res = await httpPost(`https://tapi.zeehoev.com/v1.0/app/cfmotoserverapp/vehicleSet/network/unlock`, h, sendBody, 25000);
       try { console.log(`[车辆控制] ${action} 服务器返回=${JSON.stringify(res).slice(0,300)}`); } catch(e) {}
       return vehicleCheckRes(res, action === "unlock" ? "云端开锁指令已下发" : "云端关锁指令已下发");
     }
@@ -1845,8 +1862,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         <div class="form-item"><label>App端 appSecret</label><input type="text" id="cfg_app_secret" value="${cfg.app.appSecret}" style="font-family:monospace;font-size:11px"></div>
         <div class="form-item"><label>H5端 appId</label><input type="text" id="cfg_h5_id" value="${cfg.h5.appId}"></div>
         <div class="form-item"><label>H5端 appSecret</label><input type="text" id="cfg_h5_secret" value="${cfg.h5.appSecret}" style="font-family:monospace;font-size:11px"></div>
+        <div class="form-item" style="grid-column:1/-1"><label>云端控车 AES 密钥（开/关锁必填，32位）</label><input type="text" id="cfg_vehicle_key" value="${cfg.vehicleAesKey || ''}" placeholder="填写并保存后才能使用云端开锁/关锁；留空则开关锁功能禁用" autocomplete="off" style="font-family:monospace;font-size:11px"></div>
       </div>
-      <div class="hint">修改后点击「保存配置」生效。密钥用于请求极核 API 的签名计算（md5(sha1(param+secret))）。</div>
+      <div class="hint">修改后点击「保存配置」生效。App/H5 密钥用于极核 API 签名计算（md5(sha1(param+secret))）；<b>云端控车密钥用于开/关锁报文加密，出于安全默认不内置，需自行填写保存一次，未填写时开关锁会被禁用。</b></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
         <button class="btn" onclick="resetConfig()">恢复默认</button>
@@ -1898,6 +1916,7 @@ function saveConfig() {
   var data = {
     app: { appId: document.getElementById('cfg_app_id').value, appSecret: document.getElementById('cfg_app_secret').value },
     h5: { appId: document.getElementById('cfg_h5_id').value, appSecret: document.getElementById('cfg_h5_secret').value },
+    vehicleAesKey: (document.getElementById('cfg_vehicle_key').value || '').trim(),
     community: {
       enablePost: document.getElementById('comm_post').checked,
       enableLike: document.getElementById('comm_like').checked,
@@ -1916,6 +1935,7 @@ function resetConfig() {
   document.getElementById('cfg_app_secret').value = 'c5e0da7f4da28df805694ec3dd1fc6792e9df99d';
   document.getElementById('cfg_h5_id').value = 'Sw5F9uJi';
   document.getElementById('cfg_h5_secret').value = '46870a8f678a09109468f5b0168818b91c292845';
+  document.getElementById('cfg_vehicle_key').value = '';
   document.getElementById('comm_post').checked = true;
   document.getElementById('comm_like').checked = true;
   document.getElementById('comm_comment').checked = true;
