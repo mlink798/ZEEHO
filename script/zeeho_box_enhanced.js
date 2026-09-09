@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.7.0
+#!version=2.7.1
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.7.0
-// 更新日期: 2026-09-07
+// 版本: v2.7.1
+// 更新日期: 2026-09-09
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.7.0";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.7.0 打通云端开关锁：参照开源集成FlyRenxing/zeeho，network/unlock改为body={"secret":Base64(AES256-ECB/PKCS7加密{"lockFlag","vinNo"})}、签名签明文，lockFlag 1开0关；AES与标准库逐向量验证一致)`);
+const SCRIPT_VERSION = "v2.7.1";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.7.1 修复车架号“显示/隐藏”按钮与车辆详情弹窗点击无反应：删除重复的空数组声明，避免覆盖顶部注入的真实车辆数据；云端开关锁逻辑沿用v2.7.0，待App3.0.1新AES密钥确认后启用)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -1666,7 +1666,8 @@ function showSigninResult(d) {
 function closeModal() {
   document.getElementById('signinModal').style.display = 'none';
 }
-var vehicleDataList = [];
+// 注意：vehicleDataList 已在看板脚本顶部渲染时注入真实车辆数据，此处禁止再用空数组覆盖，
+// 否则卡片车架号“显示”按钮、车辆详情弹窗都会因取不到 vehicleDataList[idx] 而无反应
 function showVehicleDetail(idx) {
   var v = vehicleDataList[idx];
   if (!v) return;
