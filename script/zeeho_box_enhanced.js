@@ -3,7 +3,7 @@
 #!desc=极核ZEEHO多账号签到面板 + 网页配置，访问 http://zeeho.box
 #!author=lucky
 #!homepage=https://github.com/mlink798/ZEEHO
-#!version=2.8.0
+#!version=2.9.0
 
 图标: https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png
 
@@ -37,13 +37,13 @@ hostname = tapi.zeehoev.com, h5.zeehoev.com, zeeho.box
 const $ = new Env("极核看板增强版");
 
 // ========== 极核 ZEEHO 签到面板脚本 ==========
-// 版本: v2.8.0
+// 版本: v2.9.0
 // 更新日期: 2026-09-09
 // 作者: @lucky
 // 主页: https://github.com/mlink798/ZEEHO
 // ============================================
-const SCRIPT_VERSION = "v2.8.0";
-console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.8.0 ①云端控车AES密钥改为配置页手动填写、保存后才能开/关锁(默认不内置,防滥用)；②修复车辆实际已动作却因响应超时报红叉：控车请求单独放宽超时且超时按“指令已下发”提示；其余沿用v2.7.2)`);
+const SCRIPT_VERSION = "v2.9.0";
+console.log(`🚀 [极核面板] 脚本版本: ${SCRIPT_VERSION} (2026-09-09 v2.9.0 ①车辆实时状态卡片：补在线/车锁/坐垫状态展示、自动刷新间隔可在配置页自定义；②运行日志支持按 全部/签到/控车 分类筛选，控车操作也写入日志；③车辆GPS坐标支持一键跳转地图查看定位(无坐标置灰)；多账号分组本版不做。其余沿用v2.8.0)`);
 
 // ========== QX(Quantumult X) 运行时兼容层 ==========
 // QX 持久化用 $prefs、通知用 $notify；统一包装成 Loon 风格 API，后续代码无需区分运行环境
@@ -118,11 +118,18 @@ const CK_DATA = "zeeho_data";
 const CK_LOGS = "zeeho_logs";
 
 // ========== 默认配置 ==========
+// 看板自动刷新间隔(秒)规范化：最小15秒、最大3600秒，0/非法/缺失一律回退60秒，避免配置成0导致疯狂刷新
+function normalizeRefreshSec(v) {
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0) return 60;
+  return Math.max(15, Math.min(3600, Math.round(n)));
+}
 const DEFAULT_CONFIG = {
   app: { appId: "S7qPWPU1", appSecret: "c5e0da7f4da28df805694ec3dd1fc6792e9df99d" },
   h5:  { appId: "Sw5F9uJi", appSecret: "46870a8f678a09109468f5b0168818b91c292845" },
   community: { enablePost: true, enableLike: true, enableComment: true, enableShare: true, enableDelete: true },
-  vehicleAesKey: "" // 云端开/关锁AES-256-ECB密钥(32位)。默认留空不内置，需用户在配置页手动填写并保存后才能使用云端开/关锁（防滥用）
+  vehicleAesKey: "", // 云端开/关锁AES-256-ECB密钥(32位)。默认留空不内置，需用户在配置页手动填写并保存后才能使用云端开/关锁（防滥用）
+  autoRefreshSec: 60 // 看板首页自动刷新间隔(秒)，配置页可改；规范化见 normalizeRefreshSec
 };
 
 // ========== 版本信息 ==========
@@ -146,7 +153,8 @@ function getConfig() {
         app: { appId: c.app?.appId || storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: c.app?.appSecret || storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
         h5:  { appId: c.h5?.appId || storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: c.h5?.appSecret || storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
         community: { enablePost: c.community?.enablePost !== false, enableLike: c.community?.enableLike !== false, enableComment: c.community?.enableComment !== false, enableShare: c.community?.enableShare !== false, enableDelete: c.community?.enableDelete !== false },
-        vehicleAesKey: (typeof c.vehicleAesKey === "string" ? c.vehicleAesKey : "").trim()
+        vehicleAesKey: (typeof c.vehicleAesKey === "string" ? c.vehicleAesKey : "").trim(),
+        autoRefreshSec: normalizeRefreshSec(c.autoRefreshSec)
       };
     }
   } catch(e) {}
@@ -155,7 +163,8 @@ function getConfig() {
     app: { appId: storeApp.appId || DEFAULT_CONFIG.app.appId, appSecret: storeApp.appSecret || DEFAULT_CONFIG.app.appSecret },
     h5:  { appId: storeH5.appId || DEFAULT_CONFIG.h5.appId, appSecret: storeH5.appSecret || DEFAULT_CONFIG.h5.appSecret },
     community: JSON.parse(JSON.stringify(DEFAULT_CONFIG.community)),
-    vehicleAesKey: ""
+    vehicleAesKey: "",
+    autoRefreshSec: 60
   };
 }
 function saveConfig(cfg) {
@@ -826,6 +835,11 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
       const soc = Number(d.bmssoc || d.batteryLevel || 0);
       const range = Number(d.hmiRidableMile || d.vehicleRidableMile || d.ridableMileage || 0);
       const voltage = Number(d.voltage || d.batteryVoltage || d.bmsVoltage || d.totalVoltage || d.batteryTotalVoltage || 0);
+      // GPS 经纬度：V2结构层级不固定，用 deepPick 在整棵树兜底找常见字段名；经度 lng/lon、纬度 lat
+      const lngStr = deepPick(d, ["longitude","lng","lon","gpsX","longitudeValue","coordX","x"]);
+      const latStr = deepPick(d, ["latitude","lat","gpsY","latitudeValue","coordY","y"]);
+      const longitude = Number(lngStr);
+      const latitude = Number(latStr);
       return {
         batteryPercent: Math.max(0, Math.min(100, isFinite(soc) ? soc : 0)),
         residualRangeKm: isFinite(range) ? range : 0,
@@ -836,6 +850,13 @@ async function fetchVehicleWidgets(acc, cfg, vinNo) {
         vehicleImageUrl: String(d.vehicleScalePicUrl || d.vehiclePicUrl || "").trim(),
         headLockState: String(d.headLockState || "").trim(),
         batteryPullOut: String(d.batteryPullOutFlag || "") === "1",
+        // 在线状态（4G/TBOX 是否在线）：尝试常见字段名
+        online: String(d.onlineStatus || d.online || d.netStatus || d.tboxStatus || d.deviceOnline || "").trim(),
+        // 坐垫/座桶锁状态：字段名各版本不一致，deepPick 兜底；取不到为空串，前端不显示，绝不编造
+        cushionState: deepPick(d, ["cushionState","cushionStatus","cushionLockState","seatState","seatStatus","seatLockState","saddleState","saddleStatus","saddleLockState"]),
+        // GPS 坐标（数值非法时置空，前端据此置灰地图按钮）
+        longitude: (isFinite(longitude) && Math.abs(longitude) <= 180 && longitude !== 0) ? longitude : "",
+        latitude: (isFinite(latitude) && Math.abs(latitude) <= 90 && latitude !== 0) ? latitude : "",
         // 电源/ACC状态（开关机）：尝试多种可能字段名
         powerStatus: String(d.accStatus || d.powerStatus || d.vehicleStatus || d.ignitionStatus || d.powerMode || d.accState || d.powerState || d.vehicleState || d.engineStatus || d.isPowerOn || d.powerOn || "").trim(),
         // 车锁状态：开锁=上电(开机)，锁车=下电(关机)；headLockState龙头锁为实时字段，优先取
@@ -902,11 +923,18 @@ async function fetchVehicleHomePage(acc, cfg, vinNo) {
       const headLockIot = pickIotProp(d, "HeadLockState");
       // 顶层 headLockState 实时更新优先，其次iot龙头锁，最后整车锁VehicleLock_S(可能上报陈旧)
       const topLock = String(d.headLockState || d.lockState || d.lockStatus || d.vehicleLockState || headLockIot || vehicleLock || "").trim();
+      const lngStr = deepPick(d, ["longitude","lng","lon","gpsX","longitudeValue","coordX","x"]);
+      const latStr = deepPick(d, ["latitude","lat","gpsY","latitudeValue","coordY","y"]);
+      const longitude = Number(lngStr);
+      const latitude = Number(latStr);
       return {
         powerStatus: deepPick(d, ["accStatus","powerStatus","vehicleStatus","ignitionStatus","powerMode","accState","powerState","vehicleState","engineStatus","isPowerOn","powerOn","acc"]).trim(),
         lockState: topLock,
-        online: String(d.onlineStatus || d.rideState || d.online || "").trim(),
-        rideState: String(d.rideState || "").trim()
+        online: String(d.onlineStatus || d.rideState || d.online || d.netStatus || d.tboxStatus || "").trim(),
+        rideState: String(d.rideState || "").trim(),
+        cushionState: deepPick(d, ["cushionState","cushionStatus","cushionLockState","seatState","seatStatus","seatLockState","saddleState","saddleStatus","saddleLockState"]),
+        longitude: (isFinite(longitude) && Math.abs(longitude) <= 180 && longitude !== 0) ? longitude : "",
+        latitude: (isFinite(latitude) && Math.abs(latitude) <= 90 && latitude !== 0) ? latitude : ""
       };
     }
     return null;
@@ -1024,7 +1052,7 @@ async function fetchBatteryChargeState(acc, cfg, vinNo) {
 }
 
 async function fetchVehicleInfo(acc, cfg) {
-  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "", powerStatus: "", lockState: "", online: "", rideState: "" };
+  const result = { hasVehicle: false, vehicleName: "", vinNo: "", voltage: 0, current: 0, batteryTemp: 0, batteryPercent: 0, residualRangeKm: 0, rangeEstimated: false, address: "", locationTime: "", chargeState: "未充电", frontPressure: "", rearPressure: "", frontTemp: "", rearTemp: "", todayDistance: 0, todayDuration: 0, todayMaxSpeed: 0, lastRideMileage: 0, vehicleImageUrl: "", serviceEndDate: "", serviceRemainDays: 0, serviceStatus: "", powerStatus: "", lockState: "", online: "", rideState: "", cushionState: "", longitude: "", latitude: "" };
   try {
     const vehicles = await fetchVehicleList(acc, cfg);
     if (vehicles.length === 0) return result;
@@ -1051,6 +1079,11 @@ async function fetchVehicleInfo(acc, cfg) {
       result.lockState = widgets.lockState || "";
       if (widgets.vehicleName) result.vehicleName = widgets.vehicleName;
       if (widgets.vehicleImageUrl) result.vehicleImageUrl = widgets.vehicleImageUrl;
+      if (widgets.online) result.online = widgets.online;
+      if (widgets.cushionState) result.cushionState = widgets.cushionState;
+      // 坐标：widgets 先取到就用
+      if (widgets.longitude !== "" && widgets.longitude !== undefined) result.longitude = widgets.longitude;
+      if (widgets.latitude !== "" && widgets.latitude !== undefined) result.latitude = widgets.latitude;
     }
     // homePage 优先（可能包含更准确的开关机/车锁状态）
     if (homePage) {
@@ -1058,6 +1091,10 @@ async function fetchVehicleInfo(acc, cfg) {
       if (homePage.lockState) result.lockState = homePage.lockState;
       if (homePage.online) result.online = homePage.online;
       if (homePage.rideState) result.rideState = homePage.rideState;
+      if (homePage.cushionState) result.cushionState = homePage.cushionState;
+      // 坐标兜底：widgets 没取到时用首页综合接口的
+      if ((result.longitude === "" || result.longitude === undefined) && homePage.longitude !== "" && homePage.longitude !== undefined) result.longitude = homePage.longitude;
+      if ((result.latitude === "" || result.latitude === undefined) && homePage.latitude !== "" && homePage.latitude !== undefined) result.latitude = homePage.latitude;
     }
     if (tire) {
       result.frontPressure = tire.frontPressure;
@@ -1277,6 +1314,44 @@ function getPowerDisplay(powerStatus, lockState) {
   return { text: "状态未知", cls: "power-unknown" };
 }
 
+// 在线状态（4G/TBOX）：1/online/true/在线=在线，0/offline/false/离线=离线，取不到返回空串不显示
+function getOnlineDisplay(online) {
+  const s = String(online || "").toLowerCase().trim();
+  if (!s) return { text: "", cls: "" };
+  const onVals = ["1", "on", "online", "true", "在线", "已在线", "connected", "normal"];
+  const offVals = ["0", "off", "offline", "false", "离线", "未在线", "已离线", "disconnect", "disconnected", "sleep", "休眠"];
+  if (onVals.includes(s)) return { text: "在线", cls: "online-on" };
+  if (offVals.includes(s)) return { text: "离线", cls: "online-off" };
+  // 其它非标准值原样展示（如 rideState 文本），用中性色
+  return { text: String(online), cls: "online-unk" };
+}
+// 车锁状态：返回 {text,cls}，取不到返回空串
+function getLockDisplay(lockState) {
+  const s = String(lockState || "").toLowerCase().trim();
+  if (!s) return { text: "", cls: "" };
+  const unlocked = ["0", "未锁", "开锁", "unlocked", "false", "open", "已开锁", "未锁车"];
+  const locked = ["1", "已锁", "锁车", "locked", "true", "closed", "已锁车"];
+  if (unlocked.includes(s)) return { text: "未锁车", cls: "lock-unlocked" };
+  if (locked.includes(s)) return { text: "已锁车", cls: "lock-locked" };
+  return { text: String(lockState), cls: "lock-unk" };
+}
+// 坐垫状态：字段语义不确定，仅在有值时原样展示，不做开/合的武断映射
+function getCushionDisplay(cushionState) {
+  const s = String(cushionState || "").trim();
+  if (!s) return "";
+  const openVals = ["1", "open", "opened", "on", "true", "开", "已开", "打开", "弹开"];
+  const closedVals = ["0", "close", "closed", "off", "false", "关", "已关", "闭合", "关闭"];
+  if (openVals.includes(s.toLowerCase())) return "坐垫已开";
+  if (closedVals.includes(s.toLowerCase())) return "坐垫已合";
+  return "坐垫·" + s;
+}
+// 坐标是否有效（经纬度都是非空有限数、在合法区间、且不是 0,0）
+function hasValidCoord(lat, lng) {
+  if (lat === "" || lat === null || lat === undefined || lng === "" || lng === null || lng === undefined) return false;
+  const la = Number(lat), ln = Number(lng);
+  return isFinite(la) && isFinite(ln) && Math.abs(la) <= 90 && Math.abs(ln) <= 180 && !(la === 0 && ln === 0);
+}
+
 function renderDashboard(accounts, data, cfg, updateTime) {
   const totalScore = data.reduce((s, a) => s + (a.score || 0), 0);
   const signedCount = data.filter(a => a.signedToday).length;
@@ -1307,6 +1382,11 @@ function renderDashboard(accounts, data, cfg, updateTime) {
     }
     // 开关机状态（优先电源字段，其次用车锁推断）
     const powerDisplay = getPowerDisplay(v.powerStatus, v.lockState);
+    // 实时状态：在线 / 车锁 / 坐垫（取不到则对应为空，不渲染）
+    const onlineDisplay = getOnlineDisplay(v.online || v.rideState);
+    const lockDisplay = getLockDisplay(v.lockState);
+    const cushionText = getCushionDisplay(v.cushionState);
+    const coordOk = hasValidCoord(v.latitude, v.longitude);
 
     return `
     <div class="acc-card ${a.error ? 'acc-error' : ''}">
@@ -1339,9 +1419,17 @@ function renderDashboard(accounts, data, cfg, updateTime) {
       <div class="vehicle-section" onclick="showVehicleDetail(${idx})" style="cursor:pointer">
         <div class="vehicle-label">
           <span>🚗 ${a.vehicle.vehicleName || "车辆"} ${a.vehicle.vinNo ? `<span class="vin-no" id="vin_mask_${idx}">${maskVin(a.vehicle.vinNo)}</span><button type="button" class="vin-toggle-btn" onclick="event.stopPropagation();toggleVin(${idx},this)">显示</button>` : ""}</span>
-          <span class="vehicle-charge ${isCharging ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
-          <span class="vehicle-power ${powerDisplay.cls}">${powerDisplay.text}</span>
+          <span class="vbadge-group">
+            ${onlineDisplay.text ? `<span class="vehicle-online ${onlineDisplay.cls}" title="车辆网络在线状态">${onlineDisplay.text}</span>` : ""}
+            <span class="vehicle-charge ${isCharging ? "charging" : ""}">${a.vehicle.chargeState || "未充电"}</span>
+            <span class="vehicle-power ${powerDisplay.cls}">${powerDisplay.text}</span>
+          </span>
         </div>
+        ${(lockDisplay.text || cushionText) ? `
+        <div class="vehicle-status-row">
+          ${lockDisplay.text ? `<span class="vstat ${lockDisplay.cls}">🔒 ${lockDisplay.text}</span>` : ""}
+          ${cushionText ? `<span class="vstat vstat-cushion">💺 ${cushionText}</span>` : ""}
+        </div>` : ""}
         ${isCharging ? `
         <div class="charge-progress-row">
           <div class="charge-progress-info">
@@ -1387,10 +1475,10 @@ function renderDashboard(accounts, data, cfg, updateTime) {
           <span class="service-icon">📅</span>
           <span class="service-text">服务到期 ${a.vehicle.serviceEndDate}</span>
         </div>` : ""}
-        ${a.vehicle.address ? `
+        ${(a.vehicle.address || coordOk) ? `
         <div class="vehicle-addr">
-          <span>📍 ${a.vehicle.address}</span>
-          ${a.vehicle.locationTime ? `<span class="loc-time">· ${a.vehicle.locationTime}</span>` : ""}
+          <span class="addr-text">📍 ${a.vehicle.address || "已获取GPS定位"}${a.vehicle.locationTime ? ` <span class="loc-time">· ${a.vehicle.locationTime}</span>` : ""}</span>
+          <button type="button" class="map-btn ${coordOk ? "" : "map-btn-disabled"}" ${coordOk ? `onclick="event.stopPropagation();openMap(${idx})"` : "disabled title=\"暂无有效GPS坐标\""}>🗺️ 地图</button>
         </div>` : ""}
         <div class="vehicle-ctrl" onclick="event.stopPropagation()">
           <button class="vctrl-btn" onclick="vehicleCtrl('${a.userId}','find',this)">🔔 寻车</button>
@@ -1491,8 +1579,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .charge-icon{font-size:14px}
 .charge-percent{font-size:13px;font-weight:700;color:#059669}
 .charge-eta{font-size:11px;color:#059669;background:#D1FAE5;padding:2px 8px;border-radius:10px}
-.vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.vehicle-addr{font-size:10px;color:#94A3B8;margin-top:4px;display:flex;align-items:center;gap:6px}
+.addr-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .loc-time{color:#CBD5E1;font-size:9px}
+.map-btn{flex-shrink:0;border:1px solid #67E8F9;background:#ECFEFF;color:#0E7490;border-radius:6px;font-size:10px;font-weight:600;padding:3px 9px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.map-btn:active{transform:scale(.94)}
+.map-btn.map-btn-disabled{opacity:.5;cursor:not-allowed;background:#F1F5F9;border-color:#E2E8F0;color:#94A3B8}
+.vbadge-group{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.vehicle-online{font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:3px}
+.vehicle-online.online-on{background:#D1FAE5;color:#065F46}
+.vehicle-online.online-off{background:#F1F5F9;color:#64748B}
+.vehicle-online.online-unk{background:#FEF3C7;color:#92400E}
+.vehicle-status-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.vstat{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;background:#F1F5F9;color:#475569}
+.vstat.lock-locked{background:#FEE2E2;color:#991B1B}
+.vstat.lock-unlocked{background:#D1FAE5;color:#065F46}
+.vstat.vstat-cushion{background:#EDE9FE;color:#5B21B6}
+.log-filter{padding:5px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;font-family:inherit;background:#fff;color:#334155;outline:none}
+.log-tag{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:6px;margin-right:6px;vertical-align:middle}
+.log-tag.tag-signin{background:#E0F7FB;color:#0E7490}
+.log-tag.tag-vehicle{background:#FEF3C7;color:#92400E}
 .vehicle-ctrl{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px;padding-top:9px;border-top:1px dashed #E2E8F0}
 .vctrl-btn{border:1px solid #CBD5E1;background:#F8FAFC;color:#334155;border-radius:8px;padding:7px 2px;font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .15s}
 .vctrl-btn:active{transform:scale(.94)}
@@ -1533,7 +1639,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <button class="nav-btn" onclick="switchTab('logs')">日志</button>
     <a href="/config" class="nav-btn">配置</a>
     <button class="nav-btn primary" onclick="runAllSignin()">立即签到</button>
-    <button class="nav-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="background:#0891B2;color:#fff">自动刷新(60s)</button>
+    <button class="nav-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="background:#0891B2;color:#fff">自动刷新(${cfg.autoRefreshSec || 60}s)</button>
     <button class="nav-btn" onclick="location.reload()">刷新</button>
   </div>
 </div>
@@ -1558,7 +1664,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   <div class="panel" style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:16px;overflow:hidden">
     <div class="panel-head" style="padding:14px 18px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between">
       <div class="panel-title" style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px"><span class="bar" style="width:3px;height:14px;border-radius:2px;background:#8B5CF6"></span>运行日志（最近50条）</div>
-      <button class="nav-btn" onclick="clearLogs()" style="padding:5px 12px;font-size:11px">清空日志</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="logFilter" class="log-filter" onchange="loadLogs()">
+          <option value="all">全部类型</option>
+          <option value="signin">仅签到</option>
+          <option value="vehicle">仅控车</option>
+        </select>
+        <button class="nav-btn" onclick="clearLogs()" style="padding:5px 12px;font-size:11px">清空日志</button>
+      </div>
     </div>
     <div id="logsList" style="padding:14px 18px;max-height:70vh;overflow-y:auto"></div>
   </div>
@@ -1589,11 +1702,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 <div class="footer">极核 ZEEHO 签到看板 · 作者 <a href="https://github.com/mlink798">lucky</a> · 数据来自代理工具实时 API<br><span style="font-size:10px;color:#CBD5E1;margin-top:4px;display:inline-block">脚本版本 ${SCRIPT_VERSION}</span></div>
 <script>
 var vehicleDataList = ${JSON.stringify(data.map(function(a){ return a.vehicle || {}; }))};
+var AUTO_REFRESH_SEC = ${cfg.autoRefreshSec || 60};
 var autoRefreshTimer = null;
-var autoRefreshCountdown = 60;
+var autoRefreshCountdown = AUTO_REFRESH_SEC;
+// 浏览器端坐标校验（与后端 hasValidCoord 同逻辑，独立一份供浏览器内函数调用）
+function hasValidCoord(lat, lng) { if (lat === "" || lat === null || lat === undefined || lng === "" || lng === null || lng === undefined) return false; lat = Number(lat); lng = Number(lng); return isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0); }
+// 跳转地图查看车辆定位：iPhone 优先苹果地图（q=纬度,经度）；坐标非法时提示
+function openMap(idx) {
+  var v = vehicleDataList[idx]; if (!v) return;
+  if (!hasValidCoord(v.latitude, v.longitude)) { showToast('暂无有效GPS坐标', 'err'); return; }
+  var lat = Number(v.latitude), lng = Number(v.longitude);
+  var url = 'https://maps.apple.com/?q=' + lat + ',' + lng + '&z=17';
+  window.open(url, '_blank');
+}
 function startAutoRefresh() {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-  autoRefreshCountdown = 60;
+  autoRefreshCountdown = AUTO_REFRESH_SEC;
   updateAutoRefreshBtn();
   autoRefreshTimer = setInterval(function() {
     autoRefreshCountdown--;
@@ -1631,15 +1755,36 @@ function switchTab(tab) {
   if (tab === 'logs') loadLogs();
 }
 function loadLogs() {
+  var filterEl = document.getElementById('logFilter');
+  var filter = filterEl ? filterEl.value : 'all';
   fetch('/api/get-logs').then(function(r){return r.json()}).then(function(d){
     var list = document.getElementById('logsList');
-    if (!d.logs || d.logs.length === 0) {
+    var all = d.logs || [];
+    if (all.length === 0) {
       list.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">暂无运行日志</div>';
       return;
     }
-    list.innerHTML = d.logs.map(function(log){
+    // 旧日志没有 type 字段，统一按签到(signin)兜底，避免历史记录在筛选时被吞掉
+    var logs = all.filter(function(log){
+      var t = log.type || 'signin';
+      if (filter === 'all') return true;
+      return t === filter;
+    });
+    if (logs.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">该分类下暂无日志</div>';
+      return;
+    }
+    list.innerHTML = logs.map(function(log){
+      var t = log.type || 'signin';
+      var tag = t === 'vehicle' ? '<span class="log-tag tag-vehicle">控车</span>' : '<span class="log-tag tag-signin">签到</span>';
+      var result = '';
+      if (t === 'vehicle') {
+        result = '<span class="log-result '+(log.success?'':'err')+'">'+(log.actionText || '车辆控制')+' '+(log.success ? '成功' : ('失败：'+(log.message || log.error || '未知')))+'</span>';
+      } else {
+        result = '<span class="log-result '+(log.success?'':'err')+'">'+(log.success?('成功 +'+log.totalGain):('失败: '+(log.error||'未知')))+'</span>';
+      }
       var steps = log.steps ? log.steps.map(function(s){return '<div>· '+s+'</div>'}).join('') : '';
-      return '<div class="log-item"><div class="log-time">'+log.time+'</div><div><span class="log-user">'+log.userName+'</span><span class="log-result '+(log.success?'':'err')+'">'+(log.success?('成功 +'+log.totalGain):('失败: '+(log.error||'未知')))+'</span></div>'+(steps?'<div class="log-steps">'+steps+'</div>':'')+'</div>';
+      return '<div class="log-item"><div class="log-time">'+log.time+'</div><div>'+tag+'<span class="log-user">'+(log.userName || '')+'</span>'+result+'</div>'+(steps?'<div class="log-steps">'+steps+'</div>':'')+'</div>';
     }).join('');
   }).catch(function(){document.getElementById('logsList').innerHTML='<div style="text-align:center;padding:40px;color:#DC2626">加载失败</div>'});
 }
@@ -1720,6 +1865,9 @@ function showVehicleDetail(idx) {
   var hasTire = (v.frontPressure && v.frontPressure !== "未绑定") || (v.rearPressure && v.rearPressure !== "未绑定");
   if (hasTire) rows.push('<div class="v-detail-row"><span class="v-detail-label">胎压</span><span class="v-detail-val">前'+(v.frontPressure||'-')+' / 后'+(v.rearPressure||'-')+'</span></div>');
   if (v.address) rows.push('<div class="v-detail-row"><span class="v-detail-label">车辆位置</span><span class="v-detail-val" style="font-size:12px">'+v.address+'</span></div>');
+  var dCoordOk = hasValidCoord(v.latitude, v.longitude);
+  if (dCoordOk) rows.push('<div class="v-detail-row"><span class="v-detail-label">GPS坐标</span><span class="v-detail-val" style="font-family:monospace;font-size:11px">'+Number(v.latitude).toFixed(6)+', '+Number(v.longitude).toFixed(6)+'</span></div>');
+  rows.push('<div class="v-detail-row"><span class="v-detail-label">地图定位</span><span><button type="button" class="vin-toggle-btn" '+(dCoordOk ? 'onclick="openMap('+idx+')"' : 'disabled')+' style="'+(dCoordOk ? '' : 'opacity:.45;cursor:not-allowed')+'">🗺️ '+(dCoordOk ? '在地图中查看' : '暂无GPS坐标')+'</button></span></div>');
   if (v.locationTime) rows.push('<div class="v-detail-row"><span class="v-detail-label">最后定位</span><span class="v-detail-val" style="font-size:11px;color:#94A3B8">'+v.locationTime+'</span></div>');
   if (v.serviceEndDate) rows.push('<div class="v-detail-row"><span class="v-detail-label">服务到期</span><span class="v-detail-val">'+v.serviceEndDate+'</span></div>');
   content.innerHTML = '<div class="v-detail-container">'+rows.join('')+'</div><style>.v-detail-container{display:flex;flex-direction:column;gap:0}.v-detail-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F1F5F9}.v-detail-row:last-child{border-bottom:none}.v-detail-label{font-size:12px;color:#64748B;font-weight:500}.v-detail-val{font-size:13px;color:#0F172A;font-weight:600}</style>';
@@ -1863,6 +2011,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         <div class="form-item"><label>H5端 appId</label><input type="text" id="cfg_h5_id" value="${cfg.h5.appId}"></div>
         <div class="form-item"><label>H5端 appSecret</label><input type="text" id="cfg_h5_secret" value="${cfg.h5.appSecret}" style="font-family:monospace;font-size:11px"></div>
         <div class="form-item" style="grid-column:1/-1"><label>云端控车 AES 密钥（开/关锁必填，32位）</label><input type="text" id="cfg_vehicle_key" value="${cfg.vehicleAesKey || ''}" placeholder="填写并保存后才能使用云端开锁/关锁；留空则开关锁功能禁用" autocomplete="off" style="font-family:monospace;font-size:11px"></div>
+        <div class="form-item"><label>看板自动刷新间隔（秒，范围15~3600，默认60；填非法值自动回退60）</label><input type="number" min="15" max="3600" step="5" id="cfg_refresh_sec" value="${cfg.autoRefreshSec || 60}"></div>
       </div>
       <div class="hint">修改后点击「保存配置」生效。App/H5 密钥用于极核 API 签名计算（md5(sha1(param+secret))）；<b>云端控车密钥用于开/关锁报文加密，出于安全默认不内置，需自行填写保存一次，未填写时开关锁会被禁用。</b></div>
       <div class="btn-row">
@@ -1917,6 +2066,7 @@ function saveConfig() {
     app: { appId: document.getElementById('cfg_app_id').value, appSecret: document.getElementById('cfg_app_secret').value },
     h5: { appId: document.getElementById('cfg_h5_id').value, appSecret: document.getElementById('cfg_h5_secret').value },
     vehicleAesKey: (document.getElementById('cfg_vehicle_key').value || '').trim(),
+    autoRefreshSec: Number(document.getElementById('cfg_refresh_sec').value),
     community: {
       enablePost: document.getElementById('comm_post').checked,
       enableLike: document.getElementById('comm_like').checked,
@@ -1936,6 +2086,7 @@ function resetConfig() {
   document.getElementById('cfg_h5_id').value = 'Sw5F9uJi';
   document.getElementById('cfg_h5_secret').value = '46870a8f678a09109468f5b0168818b91c292845';
   document.getElementById('cfg_vehicle_key').value = '';
+  document.getElementById('cfg_refresh_sec').value = 60;
   document.getElementById('comm_post').checked = true;
   document.getElementById('comm_like').checked = true;
   document.getElementById('comm_comment').checked = true;
@@ -2346,6 +2497,7 @@ function sendResp(status, headers, body) {
       addLog({
         time: _d.toLocaleString("zh-CN", { hour12: false }),
         date: _ds,
+        type: "signin",
         userName: r.userName,
         userId: r.userId,
         success: r.success,
@@ -2390,6 +2542,23 @@ function sendResp(status, headers, body) {
     }
     const r = await vehicleControl(acc, action, cfg);
     console.log(`[车辆控制] ${acc.userName} ${VEHICLE_ACTION_TEXT[action]} => ${r.ok ? "成功" : "失败:" + r.message}`);
+    // 控车操作写入运行日志（type=vehicle，日志页可按“控车”筛选）
+    try {
+      const _vd = new Date();
+      const _vds = _vd.getFullYear() + "-" + String(_vd.getMonth()+1).padStart(2,"0") + "-" + String(_vd.getDate()).padStart(2,"0");
+      addLog({
+        time: _vd.toLocaleString("zh-CN", { hour12: false }),
+        date: _vds,
+        type: "vehicle",
+        action: action,
+        actionText: VEHICLE_ACTION_TEXT[action] || "车辆控制",
+        userName: acc.userName || "未知",
+        userId: acc.userId,
+        success: !!r.ok,
+        message: r.message || "",
+        error: r.ok ? "" : (r.message || "指令失败")
+      });
+    } catch(e) {}
     sendResp(200, { "Content-Type": "application/json" }, JSON.stringify(r));
     return;
   }
