@@ -71,7 +71,6 @@ function addLog(msg, type = "sign") {
 
 // ===================== AES加密工具(AES-256-ECB PKCS7) =====================
 function encryptAES(plainText, key32) {
-  // Loon内置Crypto，AES256 ECB PKCS7，输出hex
   const Crypto = $crypto;
   const key = key32;
   const cipher = Crypto.createCipher("aes-256-ecb", key);
@@ -360,117 +359,91 @@ window.onload = function(){
 `;
 }
 
-// ===================== HTTP请求路由分发 =====================
-$httpServer.start({
-  port: 9090,
-  handler: async (req, res) => {
-    const url = new URL(req.url, `http://127.0.0.1:9090`);
-    const path = url.pathname;
-    // PWA manifest.webmanifest
-    if (path === '/manifest.webmanifest') {
-      const manifest = JSON.stringify({
-        "name": "ZEEHO 极核助手面板",
-        "short_name": "ZEEHO助手",
-        "description": "Loon脚本｜极核电动车签到、车辆远程控制、GPS定位面板",
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#f7f8fa",
-        "theme_color": "#222222",
-        "icons": [
-          {
-            "src": "https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any maskable"
-          }
-        ]
-      },null,2);
-      res.writeHead(200, {"Content-Type":"application/manifest+json"});
-      res.end(manifest);
-      return;
+// ========== Loon标准请求捕获入口（核心修复，移除$httpServer） ==========
+if ($request) {
+    const url = $request.url;
+    // PWA manifest
+    if (url.indexOf("/manifest.webmanifest") > -1) {
+        const manifest = JSON.stringify({
+            "name": "ZEEHO 极核助手面板",
+            "short_name": "ZEEHO助手",
+            "description": "Loon脚本｜极核电动车签到、车辆远程控制、GPS定位面板",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#f7f8fa",
+            "theme_color": "#222222",
+            "icons": [
+              {
+                "src": "https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/ZEEHO.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+              }
+            ]
+        },null,2);
+        $done({
+            status: "200",
+            headers: {"Content-Type":"application/manifest+json"},
+            body: manifest
+        });
     }
     // 首页面板
-    if(path === "/"){
-      res.writeHead(200, {"Content-Type":"text/html;charset=utf-8"});
-      res.end(renderDashboardHtml());
-      return;
+    else if(url.match(/^http:\/\/zeeho\.box\/?$/)){
+        $done({
+            status:"200",
+            headers:{"Content-Type":"text/html;charset=utf-8"},
+            body: renderDashboardHtml()
+        })
     }
-    // 控车接口
-    if(path === "/api/vehicle/control"){
-      let body = "";
-      req.on("data", chunk=>body+=chunk);
-      req.on("end", async ()=>{
-        const {vin,command} = JSON.parse(body);
-        let ret;
-        switch(command){
-          case "unlock": ret = await vehicleUnlock(vin);break;
-          case "lock": ret = await vehicleLock(vin);break;
-          case "honk": ret = await vehicleHonk(vin);break;
-          case "open_seat": ret = await vehicleOpenSeat(vin);break;
-          default: ret={success:false,message="指令不支持"}
-        }
-        res.writeHead(200,{"Content-Type":"application/json"});
-        res.end(JSON.stringify(ret));
-      })
-      return;
+    // API接口
+    else if(url.indexOf("/api/vehicle/control") > -1){
+        let reqBody = JSON.parse($request.body || "{}");
+        const {vin,command} = reqBody;
+        (async ()=>{
+            let ret;
+            switch(command){
+                case "unlock": ret = await vehicleUnlock(vin);break;
+                case "lock": ret = await vehicleLock(vin);break;
+                case "honk": ret = await vehicleHonk(vin);break;
+                case "open_seat": ret = await vehicleOpenSeat(vin);break;
+                default: ret={success:false,message="指令不支持"}
+            }
+            $done({status:"200",headers:{"Content-Type":"application/json"},body:JSON.stringify(ret)});
+        })();
     }
-    // 日志读取
-    if(path === "/api/log/list"){
-      res.writeHead(200,{"Content-Type":"application/json"});
-      res.end(JSON.stringify(getLogList()));
-      return;
+    else if(url.indexOf("/api/log/list") > -1){
+        $done({status:"200",headers:{"Content-Type":"application/json"},body:JSON.stringify(getLogList())});
     }
-    // 清空日志
-    if(path === "/api/log/clear"){
-      saveLogList([]);
-      res.writeHead(200,{"Content-Type":"application/json"});
-      res.end(JSON.stringify({ok:true}));
-      return;
+    else if(url.indexOf("/api/log/clear") > -1){
+        saveLogList([]);
+        $done({status:"200",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true})});
     }
-    // 保存配置
-    if(path === "/api/config/save"){
-      let body = "";
-      req.on("data", chunk=>body+=chunk);
-      req.on("end", async ()=>{
-        const data = JSON.parse(body);
-        // 校验刷新间隔
+    else if(url.indexOf("/api/config/save") > -1){
+        const data = JSON.parse($request.body || "{}");
         let interval = Number(data.refreshInterval);
-        if(isNaN(interval) || interval < 10 && interval!==0) interval=60;
-        saveConfig({
-          vehicleAesKey:data.vehicleAesKey,
-          refreshInterval:interval
-        });
-        res.writeHead(200,{"Content-Type":"application/json"});
-        res.end(JSON.stringify({ok:true}));
-      })
-      return;
+        if(isNaN(interval) || interval <10 && interval!==0) interval=60;
+        saveConfig({vehicleAesKey:data.vehicleAesKey,refreshInterval:interval});
+        $done({status:"200",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true})});
     }
-    // 车辆状态接口
-    if(path === "/api/vehicle/status"){
-      // 此处对接真实车辆状态API，返回json
-      // 示例结构：{vin,name,online,battery,lockState,seatState,lat,lng}
-      res.writeHead(200,{"Content-Type":"application/json"});
-      res.end(JSON.stringify({
-        vin:"",
-        name:"",
-        online:false,
-        battery:"--",
-        lockState:"--",
-        seatState:"--",
-        lat:"",
-        lng:""
-      }));
-      return;
+    else if(url.indexOf("/api/vehicle/status") > -1){
+        // 车辆状态接口，后续对接真实API
+        $done({
+            status:"200",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+                vin:"",
+                name:"",
+                online:false,
+                battery:"--",
+                lockState:"--",
+                seatState:"--",
+                lat:"",
+                lng:""
+            })
+        })
     }
-    // 签到接口
-    if(path === "/api/sign/all"){
-      addLog("开始批量签到", "sign");
-      res.writeHead(200,{"Content-Type":"application/json"});
-      res.end(JSON.stringify({msg:"签到任务已启动，请查看日志"}));
-      return;
+    else if(url.indexOf("/api/sign/all") > -1){
+        addLog("开始批量签到", "sign");
+        $done({status:"200",headers:{"Content-Type":"application/json"},body:JSON.stringify({msg:"签到任务已启动，请查看日志"})});
     }
-    // 404
-    res.writeHead(404,{"Content-Type":"text/plain"});
-    res.end("404 Not Found");
-  }
-})
+}
