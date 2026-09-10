@@ -2,7 +2,7 @@
 #!name=极核 每日签到 积分任务
 #!desc=极核打开我的插件自动捕获 user_id/Authorization/Cookie/User-Agent/app_secret，无需手动抓包；每日定时自动签到。仅供个人学习使用，请勿用于违规用途。
 #!author=lucky
-#!version=2.4.9
+#!version=2.5.0
 #!icon=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/ZEEHO.png
 
 [Script]
@@ -10,7 +10,7 @@
 http-response ^https:\/\/tapi\.zeehoev\.com\/v1\.0\/mine\/cfmotoservermine\/setting script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, requires-body=true, timeout=60, tag=极核Cookie
 
 # 脚本任务
-cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, tag=极核
+cron "0 7 * * *" script-path=https://cdn.jsdelivr.net/gh/mlink798/ZEEHO@main/script/zeeho.js, timeout=300, tag=极核
 
 [MITM]
 hostname = tapi.zeehoev.com
@@ -52,6 +52,7 @@ async function main() {
   try {
     $.log('\n================== 任务 ==================\n');
     for (let user of userList) {
+    try {
       // 检查userId是否为空（面板里必须点「获取ID」按钮）
       if (!user.userId || String(user.userId) === 'undefined' || String(user.userId).trim() === '') {
         $.log(`⚠️ 账号「${user.userName || user.index}」userId为空，请在面板配置页点「获取ID」按钮自动获取`);
@@ -160,6 +161,16 @@ async function main() {
         });
         $.failCount++;
       }
+    } catch (err) {
+      $.log(`⚠️ 账号${user.index} 执行异常，已跳过继续处理后续账号: ${(err && err.message) || err}`);
+      $.failCount++;
+      $.notifyMsg.push(`❌账号「${user.userName || user.index}」执行异常: ${(err && err.message) || err}`);
+      try {
+        const _n4 = new Date();
+        const _d4 = _n4.getFullYear() + "-" + String(_n4.getMonth()+1).padStart(2,"0") + "-" + String(_n4.getDate()).padStart(2,"0");
+        addSigninLog({ time: _n4.toLocaleString("zh-CN", { hour12: false }), date: _d4, userName: user.userName || ("账号" + user.index), userId: user.userId, success: false, totalGain: 0, signinScore: 0, blindBoxScore: 0, interactScore: 0, continueDays: 0, error: "执行异常: " + ((err && err.message) || err), steps: ["执行异常，已跳过"] });
+      } catch (e2) {}
+    }
     }
   } catch (e) {
     $.log(`⛔️ main run error => ${e}`);
@@ -700,20 +711,36 @@ async function Request(o) {
     const request = { ...o, url, method: method, headers, params: undefined, timeout: timeout };
     if (method !== 'get') request.body = body;
 
-    const httpPromise = $.http[httpEntry](request)
-      .then(response => {
-        if (resultType == 'data') return $.toObj(response.body) || response.body;
-        return $.toObj(response) || response;
-      })
-      .catch(err => {
-        $.log(`❌请求发起失败！原因为：${err}`);
-        throw err;
-      });
-
-    return Promise.race([
-      new Promise((_, e) => setTimeout(() => e(new Error('当前请求已超时')), timeout)),
-      httpPromise
+    const runOnce = () => Promise.race([
+      new Promise((_, e) => setTimeout(() => e(new Error('请求超时')), timeout)),
+      $.http[httpEntry](request)
+        .then(response => {
+          if (resultType == 'data') return $.toObj(response.body) || response.body;
+          return $.toObj(response) || response;
+        })
+        .catch(err => {
+          $.log(`❌请求发起失败！原因为：${err}`);
+          throw err;
+        })
     ]);
+    try {
+      return await runOnce();
+    } catch (err) {
+      // 网络错误或超时：GET 请求间隔 2 秒重试一次，抗瞬时抖动（POST 不重试，避免重复提交）
+      const msg = (err && err.message) || String(err);
+      if (method !== 'get' || !/超时|timeout|ECONNRESET|ETIMEDOUT|网络|socket/i.test(msg)) {
+        $.log(`❌请求发起失败！原因为：${err}`);
+        return null;
+      }
+      $.log(`⚠️ 请求超时(${msg})，2秒后重试一次`);
+      await $.wait(2000);
+      try {
+        return await runOnce();
+      } catch (err2) {
+        $.log(`❌请求发起失败！原因为：${err2}`);
+        return null;
+      }
+    }
   } catch (e) {
     $.log(`❌请求发起失败！原因为：${e}`);
     return null;
